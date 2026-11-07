@@ -24,7 +24,7 @@
       .modes{display:flex;gap:2px;padding:3px;background:#e9eef5;border-radius:8px}.modes button{border:0;min-height:29px;padding:4px 8px;font-size:12px;background:transparent;border-radius:5px}.modes button[aria-pressed="true"]{background:#fff;color:var(--blue);box-shadow:0 1px 4px #23354b20;font-weight:700}
       .body{max-height:calc(100dvh - 120px);overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin}
       .player{padding:18px 18px 8px;background:#fff}h2{font-size:20px;line-height:1.25;letter-spacing:-.5px;margin:0 0 14px;font-weight:700;overflow-wrap:anywhere}
-      iframe{display:block;width:100%;aspect-ratio:16/9;border:0;border-radius:9px;background:#182333}#video:empty{display:none}
+      iframe{display:block;width:100%;min-width:200px;min-height:200px;aspect-ratio:16/9;border:0;border-radius:9px;background:#182333}#video:empty{display:none}
       .row{display:flex;align-items:center;gap:8px;margin:10px 0;flex-wrap:wrap}.transport{display:grid;grid-template-columns:1fr;margin:12px 0 0}.transport button{font-weight:650}
       #play,#point-save,#points-replace{background:var(--blue);border-color:var(--blue);color:#fff}#play:hover:not(:disabled),#point-save:hover:not(:disabled),#points-replace:hover:not(:disabled){background:#1c3e91}
       p{font-size:12px;line-height:1.6;color:var(--muted);margin:8px 0}p:empty{display:none}#status{margin:8px 0 2px;overflow-wrap:anywhere}
@@ -50,7 +50,7 @@
       .shell[data-enabled="false"] .brand{color:var(--muted);font-weight:400}
       .shell[data-enabled="false"] .mark{background:#e9eef5;color:var(--muted)}
       .shell[data-mode="video"]{width:350px}.shell[data-mode="video"] .settings{display:none}.shell[data-mode="video"] h2{font-size:16px}.shell[data-mode="video"] .player{padding:14px}
-      .shell[data-mode="closed"]{width:auto;border-radius:40px}.shell[data-mode="closed"] .body,.shell[data-mode="closed"] .modes{display:none}.shell[data-mode="closed"] .topbar{padding:9px 14px 9px 10px;border:0}.shell[data-mode="closed"] .brand{min-height:30px}
+      .shell[data-mode="closed"][data-enabled="true"]{width:222px;border-radius:14px}.shell[data-mode="closed"] .modes,.shell[data-mode="closed"] .settings,.shell[data-mode="closed"] h2,.shell[data-mode="closed"] .transport,.shell[data-mode="closed"] #status{display:none}.shell[data-mode="closed"] .player{padding:10px}.shell[data-mode="closed"] iframe{width:200px;height:200px;aspect-ratio:auto;margin:auto}.shell[data-mode="closed"] .topbar{padding:9px 10px;border:0}.shell[data-mode="closed"] .brand{min-height:30px}
       .shell[data-mode="closed"][data-help="true"],.shell[data-enabled="false"][data-help="true"]{width:350px;border-radius:18px}
       @media(max-width:480px){:host{right:12px;bottom:12px}.shell{width:calc(100vw - 24px);max-width:calc(100vw - 24px)}.topbar{gap:6px}.player,.settings{padding-left:14px;padding-right:14px}}
       @media(max-width:380px){.topbar{gap:4px}.modes button{padding:4px 5px}.shell[data-enabled="true"]:not([data-mode="closed"]) .brand .mark{display:none}}
@@ -58,10 +58,10 @@
     </style>
     <div class="shell" id="panel" data-mode="open">
       <header class="topbar"><button class="brand" id="reopen" title="Open Jamingo" aria-label="Open Jamingo"><span class="mark" aria-hidden="true">♫</span>Jamingo</button>
-        <nav class="modes" aria-label="Panel mode"><button id="mode-open" aria-pressed="true" title="Show all controls">Open</button><button id="mode-video" aria-pressed="false" title="Show video and playback controls">Video</button><button id="mode-closed" aria-pressed="false" title="Collapse to a small launcher">Close</button></nav>
+        <nav class="modes" aria-label="Panel mode"><button id="mode-open" aria-pressed="true" title="Show all controls">Open</button><button id="mode-video" aria-pressed="false" title="Show video and playback controls">Video</button><button id="mode-closed" aria-pressed="false" title="Keep a compact video player visible">Close</button></nav>
         <div class="header-actions"><button id="help-toggle" type="button" aria-label="Playback help" aria-expanded="false" aria-controls="playback-help" title="Playback help">?</button><button id="toggle-enabled" type="button" role="switch" aria-label="Jamingo" aria-checked="false" title="Enable Jamingo" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v9M6.4 5.6a8 8 0 1 0 11.2 0"/></svg></button></div>
       </header>
-      <p id="playback-help" hidden>Play on the tab starts the video and replaces site audio. If playback is blocked, click Play inside the video. After the count-in, the tab follows YouTube audio. Navigate from either player; use Sync mode to calibrate.</p>
+      <p id="playback-help" hidden>Play on the tab starts the video and replaces site audio. If playback is blocked, click Play inside the video. After the count-in, the tab follows YouTube audio. Navigate from either player; use Sync mode to calibrate. Jamingo is independent and is not affiliated with or endorsed by Ultimate Guitar.</p>
       <p id="enabled-status" role="status" aria-live="polite"></p>
       <div class="body"><section class="player" aria-label="Video player">
       <h2 id="song"></h2><div id="video"></div>

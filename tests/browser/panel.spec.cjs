@@ -1,7 +1,7 @@
 const {test, expect} = require('@playwright/test');
 const path = require('node:path');
 const base = path.resolve(__dirname,'../..');
-test('search, playback, saved choice, same-song navigation and song isolation', async ({page}) => {
+test('search, playback, saved choice, same-song navigation and song isolation', async ({page},testInfo) => {
  const originErrors=[];page.on('console',message=>{if(/target origin|Failed to execute 'postMessage'/.test(message.text()))originErrors.push(message.text());});
  await page.route('https://www.youtube.com/**', route => route.fulfill({body:'<html><script>addEventListener("message",event=>{try{const data=JSON.parse(event.data);parent.postMessage({probe:{data,origin:location.origin}},"*");if(data.event==="listening")parent.postMessage(JSON.stringify({event:"onReady"}),"https://tabs.ultimate-guitar.com");}catch{}});</script></html>',contentType:'text/html'}));
  await page.route('https://tabs.ultimate-guitar.com/**',route => route.fulfill({body:'<title>Wonderwall CHORDS by Oasis @ Ultimate-Guitar.Com</title><button aria-label="Play">Play</button><button aria-label="Pause">Pause</button>',contentType:'text/html'}));
@@ -77,7 +77,19 @@ test('search, playback, saved choice, same-song navigation and song isolation', 
  await expect(page.locator('#riff-reel .settings')).toBeHidden();
  await expect(page.locator('#riff-reel iframe')).toBeVisible();
  await page.locator('#riff-reel #mode-closed').click();
- await expect(page.locator('#riff-reel .body')).toBeHidden();
+ await expect(page.locator('#riff-reel iframe')).toBeVisible();
+ await expect(page.locator('#riff-reel .settings')).toBeHidden();
+ const mini=await page.locator('#riff-reel iframe').boundingBox();
+ expect(mini.width).toBe(200);expect(mini.height).toBe(200);
+ await page.locator('#riff-reel').screenshot({path:testInfo.outputPath('mini-desktop.png')});
+ await page.setViewportSize({width:320,height:800});
+ await expect(page.locator('#riff-reel iframe')).toBeVisible();
+ const mobileMini=await page.locator('#riff-reel iframe').boundingBox();
+ expect(mobileMini.width).toBe(200);expect(mobileMini.height).toBe(200);
+ expect(mobileMini.x).toBeGreaterThanOrEqual(0);
+ expect(mobileMini.y+mobileMini.height).toBeLessThanOrEqual(800);
+ await page.locator('#riff-reel').screenshot({path:testInfo.outputPath('mini-mobile.png')});
+ await page.setViewportSize({width:1280,height:800});
  await expect(page.locator('#riff-reel #reopen')).toBeVisible();
  await page.locator('#riff-reel #reopen').click();
  expect(await frameHandle.evaluate(frame=>frame.isConnected)).toBe(true);

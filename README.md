@@ -2,25 +2,29 @@
 
 A Manifest V3 extension for **Chrome and Brave** (Chromium 111 or newer). Play a YouTube video alongside an Ultimate Guitar tab, remember your preferred versions and calibrate timing for each song and video. The interface is in English.
 
+Jamingo is an independent project, not affiliated with or endorsed by Ultimate Guitar. It does not provide an Ultimate Guitar subscription or unlock restricted content. Permission for its integration with Ultimate Guitar's internal player has not been obtained.
+
 ## Install or update
 
-1. Open `chrome://extensions` or `brave://extensions` and enable **Developer mode**.
-2. Click **Load unpacked** and select the `riff-reel` folder containing `manifest.json`.
-3. Open or reload a tab at `https://tabs.ultimate-guitar.com/tab/…`.
+1. Download **[jamingo.zip from the latest GitHub release](https://github.com/pocky/jamingo/releases/latest/download/jamingo.zip)**. Select the release asset, not GitHub's automatic source-code archive.
+2. Extract the ZIP into a permanent folder, for example `jamingo`. Keep this folder: the browser loads the extension from it.
+3. Open `chrome://extensions` or `brave://extensions` and enable **Developer mode**.
+4. Click **Load unpacked** and select the extracted folder containing `manifest.json`.
+5. Open or reload a tab at `https://tabs.ultimate-guitar.com/tab/…`, then enable Jamingo using its power switch.
 
-For updates, replace the extension files, reload the extension on the extensions page, then fully reload the Ultimate Guitar page. The audio bridge must start before the site's scripts. No npm installation or compilation is required to use the extension.
+For updates, replace the files in the **same folder**, reload the extension on the extensions page, then fully reload the Ultimate Guitar page. Keep the extension installed to retain its local settings. The audio bridge must start before the site's scripts. No npm installation or compilation is required to use the extension. Manual installations do not update automatically; download each new release yourself.
 
 ## Build and download
 
-From the `riff-reel` project folder, run `make` or `make zip`. Make and Python 3 are required. This recreates `dist/jamingo.zip` containing the manifest at its root, runtime scripts and this guide. Dependencies and tests are excluded.
+From the project root, run `make` or `make zip`. Make and Python 3 are required. This recreates and verifies `dist/jamingo.zip` containing the manifest at its root, runtime scripts, icons, documentation and MIT license. Dependencies, tests and local tooling data are excluded. The build also writes `dist/SHA256SUMS`.
 
-From your computer, replace `user@server` with your SSH connection:
+Verify a downloaded release using its accompanying checksum file:
 
 ```sh
-scp user@server:/home/pocky/Sites/perso/music/riff-reel/dist/jamingo.zip .
+sha256sum -c SHA256SUMS
 ```
 
-Extract the ZIP into a folder and load that folder as an unpacked extension.
+On macOS, use `shasum -a 256 -c SHA256SUMS`. Versioned downloads are available on the [Releases page](https://github.com/pocky/jamingo/releases). Every successful CI run also provides a ZIP artifact in [GitHub Actions](https://github.com/pocky/jamingo/actions); downloading CI artifacts requires signing into GitHub.
 
 ## Panel modes
 
@@ -30,7 +34,9 @@ Use the header to switch between three layouts:
 
 - **Open** shows the video and all controls, grouped into **Playback & audio**, **Sync points** and **Video versions**.
 - **Video** keeps the video, song title, Play/Pause and playback messages visible while hiding settings.
-- **Close** collapses the panel into a small Jamingo launcher. Click it to reopen.
+- **Close** keeps a compact 200 × 200 px YouTube player visible while hiding the song details and extension controls. Playback continues in the same iframe. Click the Jamingo name to reopen the full panel. When Jamingo is disabled, only the small launcher remains and the video is removed.
+
+All panel modes keep the embedded player at least 200 × 200 px, the minimum viewport specified in [YouTube's player documentation](https://developers.google.com/youtube/player_parameters). This addresses player visibility and size; it does not establish compliance with all YouTube requirements.
 
 The chosen mode is remembered locally. Switching modes keeps the same iframe and does not issue play, pause or seek commands. Entering Sync mode expands the full panel and its calibration section. The panel fits narrow viewports, scrolls within the available height, and exposes keyboard focus indicators.
 
@@ -139,7 +145,9 @@ npm run check
 npm run test:browser
 ```
 
-Browser tests use `/usr/bin/chromium` by default; set `PLAYWRIGHT_CHROMIUM_EXECUTABLE` to another Chromium executable if needed. Unit and DOM tests can run independently of Chromium. Browser tests use simulated Ultimate Guitar and YouTube pages; they do not replace a check against the live site.
+Install the matching test browser with `npx playwright install chromium`. To use a system browser instead, set `PLAYWRIGHT_CHROMIUM_EXECUTABLE=/usr/bin/chromium` (or another executable path). CI installs Playwright's Chromium and its OS dependencies. Unit and DOM tests can run independently of Chromium. Browser tests use simulated Ultimate Guitar and YouTube pages; they do not replace a check against the live site.
+
+The [CI and release workflow](.github/workflows/ci.yml) checks syntax, runs unit/DOM and Chromium tests, validates package metadata, and uploads the verified ZIP. A pushed `vX.Y.Z` tag publishes a release only after these checks succeed and only if the tag matches the manifest and npm versions. See [publishing instructions](docs/publishing.md).
 
 Performance regression tests cover disabled player discovery, inactive audio observation, subtree-only media scans, stable calibration controls during telemetry, and bounded YouTube result traversal. A lightweight one-second navigation check remains active while the extension is disabled so the launcher can follow Ultimate Guitar navigation. Audio graph interception remains installed from document start to support later activation.
 
@@ -152,3 +160,7 @@ Performance regression tests cover disabled player discovery, inactive audio obs
 - `content.js`: panel, calibration editing, persistence and page navigation.
 
 References: [Chrome content scripts](https://developer.chrome.com/docs/extensions/develop/concepts/content-scripts), [YouTube iframe player API](https://developers.google.com/youtube/iframe_api_reference), [Web Audio connections](https://developer.mozilla.org/en-US/docs/Web/API/AudioNode/connect).
+
+## License and third-party services
+
+Jamingo's code and original assets are released under the [MIT license](LICENSE). That license grants no rights to Ultimate Guitar or YouTube content, services, software or trademarks. The project is distributed independently through GitHub; it is not an official integration or an approved store listing. Ultimate Guitar permission remains unresolved, and YouTube search currently reads its results page rather than using the official Data API. Free distribution and optional contributions do not resolve those separate terms-of-service questions.
