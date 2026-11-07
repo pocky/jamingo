@@ -36,6 +36,7 @@ class PackageTests(unittest.TestCase):
         with zipfile.ZipFile(archive) as bundle:
             self.assertIn("LICENSE", bundle.namelist())
             self.assertIn("manifest.json", bundle.namelist())
+            self.assertEqual([name for name in bundle.namelist() if name.startswith("docs/")], ["docs/publishing.md"])
 
     def test_private_extra_stale_and_missing_entries_are_rejected(self):
         with zipfile.ZipFile(ROOT / "dist/jamingo.zip") as original:
