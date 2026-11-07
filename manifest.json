@@ -1,0 +1,41 @@
+{
+  "manifest_version": 3,
+  "name": "Riff Reel — Ultimate Guitar",
+  "version": "2.0.1",
+  "description": "YouTube videos for Ultimate Guitar tabs, with saved versions and timing calibration.",
+  "permissions": [
+    "storage"
+  ],
+  "host_permissions": [
+    "https://www.youtube.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://tabs.ultimate-guitar.com/*"
+      ],
+      "js": [
+        "core.js",
+        "sync.js",
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://tabs.ultimate-guitar.com/*"
+      ],
+      "js": [
+        "site-audio.js",
+        "native-metronome.js",
+        "player-bridge.js"
+      ],
+      "run_at": "document_start",
+      "world": "MAIN"
+    }
+  ],
+  "minimum_chrome_version": "111"
+}
