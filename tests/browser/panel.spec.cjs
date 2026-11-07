@@ -2,12 +2,13 @@ const {test, expect} = require('@playwright/test');
 const path = require('node:path');
 const base = path.resolve(__dirname,'../..');
 test('search, playback, saved choice, same-song navigation and song isolation', async ({page}) => {
- await page.route('https://www.youtube.com/**', route => route.fulfill({body:'<html></html>',contentType:'text/html'}));
+ const originErrors=[];page.on('console',message=>{if(/target origin|Failed to execute 'postMessage'/.test(message.text()))originErrors.push(message.text());});
+ await page.route('https://www.youtube.com/**', route => route.fulfill({body:'<html><script>addEventListener("message",event=>{try{const data=JSON.parse(event.data);parent.postMessage({probe:{data,origin:location.origin}},"*");if(data.event==="listening")parent.postMessage(JSON.stringify({event:"onReady"}),"https://tabs.ultimate-guitar.com");}catch{}});</script></html>',contentType:'text/html'}));
  await page.route('https://tabs.ultimate-guitar.com/**',route => route.fulfill({body:'<title>Wonderwall CHORDS by Oasis @ Ultimate-Guitar.Com</title><button aria-label="Play">Play</button><button aria-label="Pause">Pause</button>',contentType:'text/html'}));
  await page.goto('https://tabs.ultimate-guitar.com/tab/oasis/wonderwall-chords-1');
  await page.evaluate(() => {
    window.saved = {};
-   window.chrome = {storage:{local:{get:async key => ({[key]:window.saved[key]}),set:async data => Object.assign(window.saved,data),remove:async key => delete window.saved[key]}},runtime:{sendMessage:async () => ({videos:[{id:'dQw4w9WgXcQ',title:'Default'},{id:'abcdefghijk',title:'Live'}]})}};
+   window.chrome = {storage:{local:{get:async key => ({[key]:window.saved[key] ?? (key==='riff-reel:enabled' ? true : undefined)}),set:async data => Object.assign(window.saved,data),remove:async key => delete window.saved[key]}},runtime:{sendMessage:async () => ({videos:[{id:'dQw4w9WgXcQ',title:'Default'},{id:'abcdefghijk',title:'Live'}]})}};
    window.commands = [];
    window.addEventListener('message', e => { if (e.data?.probe) window.commands.push(e.data.probe); });
  });
@@ -23,26 +24,34 @@ test('search, playback, saved choice, same-song navigation and song isolation', 
  await page.locator('#riff-reel #url').fill('https://evil.org/watch?v=dQw4w9WgXcQ');
  await page.locator('#riff-reel #save').click();
  await expect(page.locator('#riff-reel #status')).toContainText('valid');
- // Instrument the iframe boundary: verify commands, origin and readiness queue.
- await page.evaluate(() => {
-   const frame = document.querySelector('#riff-reel').shadowRoot.querySelector('iframe');
-   frame.contentWindow.postMessage = (payload,origin) => window.commands.push({data:JSON.parse(payload),origin});
- });
+ // The mock YouTube document reports received commands across the real frame boundary.
  await page.evaluate(() => {
    const audio = document.createElement('audio'); audio.id='site-track'; document.body.append(audio);
    window.siteContext = new AudioContext();
    window.siteSource = window.siteContext.createOscillator();
    window.siteSource.connect(window.siteContext.destination);
  });
- await page.getByRole('button',{name:'Play',exact:true}).click();
+ await page.locator('body > button[aria-label="Play"]').click();
  await expect(page.locator('#site-track')).toHaveJSProperty('muted',true);
  await page.evaluate(() => {
    const frame = document.querySelector('#riff-reel').shadowRoot.querySelector('iframe');
    window.dispatchEvent(new MessageEvent('message',{origin:'https://www.youtube.com',source:frame.contentWindow,data:JSON.stringify({event:'onReady'})}));
  });
- expect(await page.evaluate(() => window.commands.some(c => c.data?.func === 'playVideo' && c.origin === 'https://www.youtube.com'))).toBe(true);
- await page.getByRole('button',{name:'Pause',exact:true}).click();
- expect(await page.evaluate(() => window.commands.some(c => c.data?.func === 'pauseVideo'))).toBe(true);
+ await expect.poll(() => page.evaluate(() => window.commands.some(c => c.data?.func === 'playVideo' && c.origin === 'https://www.youtube.com'))).toBe(true);
+ // Media inserted after playback is muted through the subtree observer.
+ await page.evaluate(()=>{
+   const section=document.createElement('section');
+   section.innerHTML='<div><audio id="dynamic-track"></audio></div>';
+   document.body.append(section);
+ });
+ await expect(page.locator('#dynamic-track')).toHaveJSProperty('muted',true);
+ await expect(page.locator('#riff-reel #play')).toHaveAttribute('aria-label','Pause');
+ await page.locator('#riff-reel #play').click();
+ await expect(page.locator('#riff-reel #play')).toHaveAttribute('aria-label','Play');
+ await page.locator('#riff-reel #play').click();
+ await expect(page.locator('#riff-reel #play')).toHaveAttribute('aria-label','Pause');
+ await page.locator('body > button[aria-label="Pause"]').click();
+ await expect.poll(() => page.evaluate(() => window.commands.some(c => c.data?.func === 'pauseVideo'))).toBe(true);
  await expect(page.locator('#site-track')).toHaveJSProperty('muted',true);
  await page.locator('#riff-reel #replace-audio').uncheck();
  await expect(page.locator('#site-track')).toHaveJSProperty('muted',false);
@@ -73,14 +82,108 @@ test('search, playback, saved choice, same-song navigation and song isolation', 
  await page.locator('#riff-reel #reopen').click();
  expect(await frameHandle.evaluate(frame=>frame.isConnected)).toBe(true);
  await expect(page.locator('#riff-reel .settings')).toBeVisible();
+ // Disable is available even in Close mode and restores the native page immediately.
+ await page.locator('body > button[aria-label="Play"]').click();
+ await expect(page.locator('#site-track')).toHaveJSProperty('muted',true);
+ await page.locator('#riff-reel #mode-closed').click();
+ await page.getByRole('switch',{name:'Jamingo',exact:true}).click();
+ await expect(page.locator('#riff-reel iframe')).toHaveCount(0);
+ await expect(page.locator('#dynamic-track')).toHaveJSProperty('muted',false);
+ await expect(page.locator('#site-track')).toHaveJSProperty('muted',false);
+ await expect(page.getByRole('switch',{name:'Jamingo',exact:true})).toBeVisible();
+ const commandCount=await page.evaluate(()=>window.commands.length);
+ await page.locator('body > button[aria-label="Play"]').click();
+ await expect(page.locator('#site-track')).toHaveJSProperty('muted',false);
+ expect(await page.evaluate(()=>window.commands.length)).toBe(commandCount);
+ expect(await page.evaluate(()=>window.saved['riff-reel:enabled'])).toBe(false);
+ await page.getByRole('switch',{name:'Jamingo',exact:true}).click();
+ await page.locator('#riff-reel #reopen').click();
+ await expect(page.locator('#riff-reel iframe')).toHaveAttribute('src',/dQw4w9WgXcQ/);
  await page.evaluate(() => {document.title='Ultimate Guitar';history.pushState({},'', '/explore');});
  await expect(page.locator('#riff-reel')).toHaveCount(0);
+ expect(originErrors).toEqual([]);
+});
+test('power switch stays in the header on mobile and the disabled launcher stays compact',async({page},testInfo)=>{
+ await page.route('https://tabs.ultimate-guitar.com/**',r=>r.fulfill({body:'<title>Creep CHORDS by Radiohead @ Ultimate-Guitar.Com</title>',contentType:'text/html'}));
+ await page.goto('https://tabs.ultimate-guitar.com/tab/radiohead/creep-chords-1');
+ await page.evaluate(()=>{window.chrome={storage:{local:{get:async()=>({}),set:async()=>{}}},runtime:{sendMessage:async()=>({videos:[]})}};});
+ for(const file of ['core.js','sync.js','content.js'])await page.addScriptTag({path:path.join(base,file)});
+ const power=page.getByRole('switch',{name:'Jamingo',exact:true});
+ await expect(power).not.toBeChecked();
+ await expect(page.locator('#riff-reel .brand')).toHaveCSS('font-weight','400');
+ await expect(page.locator('#riff-reel .brand')).toHaveCSS('color','rgb(88, 107, 128)');
+ await power.click();
+ await expect(power).toBeChecked();
+ await expect(page.locator('#riff-reel .brand')).toHaveCSS('font-weight','700');
+ await expect(page.locator('#riff-reel .brand')).toHaveCSS('color','rgb(36, 79, 186)');
+ for(const width of [1280,320]){
+  await page.setViewportSize({width,height:800});
+  const initialWidth=(await page.locator('#riff-reel').boundingBox()).width;
+  await page.getByRole('button',{name:'Playback help',exact:true}).click();
+  expect((await page.locator('#riff-reel').boundingBox()).width).toBe(initialWidth);
+  await page.getByRole('button',{name:'Playback help',exact:true}).click();
+  const controls=await page.locator('#riff-reel .topbar').evaluate(header=>{
+   const nodes=[...header.children].filter(el=>getComputedStyle(el).display!=='none');
+   return nodes.map(el=>{const r=el.getBoundingClientRect();return {left:r.left,right:r.right,top:r.top,bottom:r.bottom};});
+  });
+  for(let i=1;i<controls.length;i++)expect(controls[i].left).toBeGreaterThanOrEqual(controls[i-1].right);
+  expect(controls.at(-1).right).toBeLessThanOrEqual(width);
+  await page.locator('#riff-reel').screenshot({path:testInfo.outputPath('active-'+width+'.png')});
+ }
+ await power.focus();await page.keyboard.press('Space');
+ await expect(power).not.toBeChecked();
+ await expect(page.locator('#riff-reel .body')).toBeHidden();
+ await expect(page.locator('#riff-reel .brand')).toHaveText('♫Jamingo');
+ await expect(page.locator('#riff-reel .brand')).toHaveCSS('font-weight','400');
+ const help=page.getByRole('button',{name:'Playback help',exact:true});
+ await expect(page.locator('#riff-reel #playback-help')).toBeHidden();
+ await help.focus();await page.keyboard.press('Enter');
+ await expect(help).toHaveAttribute('aria-expanded','true');
+ await expect(page.locator('#riff-reel #playback-help')).toBeVisible();
+ await expect(page.locator('#riff-reel #playback-help')).toContainText('Play on the tab starts the video');
+ await page.locator('#riff-reel').screenshot({path:testInfo.outputPath('help-mobile.png')});
+ await page.keyboard.press('Escape');
+ await expect(help).toBeFocused();await expect(page.locator('#riff-reel #playback-help')).toBeHidden();
+ const bounds=await page.locator('#riff-reel').boundingBox();
+ expect(bounds.height).toBeLessThan(65);expect(bounds.width).toBeLessThan(240);
+ await page.locator('#riff-reel').screenshot({path:testInfo.outputPath('disabled-mobile.png')});
+ await page.getByRole('button',{name:'Enable Jamingo',exact:true}).click();
+ await expect(power).toBeChecked();await expect(page.locator('#riff-reel .body')).toBeVisible();
+});
+test('Play during delayed iframe navigation waits for YouTube without origin errors',async({page})=>{
+ const errors=[];page.on('console',message=>{if(message.type()==='error')errors.push(message.text());});
+ let release;const waiting=new Promise(resolve=>{release=resolve;});
+ await page.route('https://www.youtube.com/**',async route=>{
+  await waiting;
+  await route.fulfill({contentType:'text/html',body:'<script>addEventListener("message",event=>{const data=JSON.parse(event.data);if(data.event==="listening")parent.postMessage(JSON.stringify({event:"onReady"}),"https://tabs.ultimate-guitar.com");if(data.func==="playVideo")parent.postMessage({played:true},"https://tabs.ultimate-guitar.com");});</script>'});
+ });
+ await page.route('https://tabs.ultimate-guitar.com/**',route=>route.fulfill({contentType:'text/html',body:'<title>Creep CHORDS by Radiohead @ Ultimate-Guitar.Com</title><button aria-label="Play">Play</button>'}));
+ await page.goto('https://tabs.ultimate-guitar.com/tab/radiohead/creep-chords-1');
+ await page.evaluate(()=>{
+  window.chrome={storage:{local:{get:async key=>({[key]:key==='riff-reel:enabled'?true:undefined}),set:async()=>{}}},runtime:{sendMessage:async()=>({videos:[{id:'dQw4w9WgXcQ',title:'Clip'}]})}};
+  window.played=false;addEventListener('message',event=>{if(event.data?.played)window.played=true;});
+ });
+ for(const file of ['core.js','sync.js','content.js'])await page.addScriptTag({path:path.join(base,file)});
+ await expect(page.locator('#riff-reel iframe')).toHaveCount(1);
+ await page.locator('body > button[aria-label="Play"]').click();
+ // Exercise the periodic listening probe before the cross-origin navigation finishes.
+ await page.waitForTimeout(1100);
+ expect(errors.filter(error=>/target origin|postMessage/.test(error))).toEqual([]);
+ release();
+ await expect.poll(()=>page.evaluate(()=>window.played)).toBe(true);
+ await page.evaluate(async()=>{
+  const frame=document.querySelector('#riff-reel').shadowRoot.querySelector('iframe');
+  await new Promise(resolve=>{frame.addEventListener('load',resolve,{once:true});frame.src='about:blank';});
+ });
+ await page.locator('body > button[aria-label="Play"]').click();
+ await page.waitForTimeout(1100);
+ expect(errors.filter(error=>/target origin|postMessage/.test(error))).toEqual([]);
 });
 test('network failure still allows manual selection', async ({page}) => {
  await page.route('https://tabs.ultimate-guitar.com/**',r => r.fulfill({body:'<title>Creep CHORDS by Radiohead @ Ultimate-Guitar.Com</title>',contentType:'text/html'}));
  await page.route('https://www.youtube.com/**',r => r.fulfill({body:'<html></html>'}));
  await page.goto('https://tabs.ultimate-guitar.com/tab/radiohead/creep-chords-1');
- await page.evaluate(() => {window.chrome={storage:{local:{get:async()=>({}),set:async()=>{}}},runtime:{sendMessage:async()=>({error:'Indisponible'})}};});
+ await page.evaluate(() => {window.chrome={storage:{local:{get:async key=>({[key]:key==='riff-reel:enabled'?true:undefined}),set:async()=>{}}},runtime:{sendMessage:async()=>({error:'Indisponible'})}};});
  await page.addScriptTag({path:path.join(base,'site-audio.js')});
  await page.addScriptTag({path:path.join(base,'core.js')});
  await page.addScriptTag({path:path.join(base,'sync.js')});

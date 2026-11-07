@@ -3,8 +3,18 @@ const assert = require('node:assert/strict');
 const vm = require('node:vm');
 const fs = require('node:fs');
 const path = require('node:path');
+test('audio observation is idle when disabled and only scans inserted subtrees while active',()=>{
+ const f=fixture();assert.equal(f.observation.active,false);assert.equal(f.observation.scans,0);
+ f.mute(true);assert.equal(f.observation.active,true);assert.equal(f.observation.scans,1);
+ f.mute(true);assert.equal(f.observation.scans,1);
+ const audio=new f.HTMLMediaElement();
+ for(let i=0;i<1000;i++)f.mutation([{addedNodes:[{querySelectorAll(){return [];}}]}]);
+ f.mutation([{addedNodes:[{querySelectorAll(){return [audio];}}]}]);
+ assert.equal(audio.muted,true);assert.equal(f.observation.scans,1);
+ f.mute(false);assert.equal(f.observation.active,false);assert.equal(audio.muted,false);
+});
 function fixture() {
- const listeners = {}, media = [], contexts = [];
+ const listeners = {}, media = [], contexts = [], observation = {active:false,scans:0};
  class AudioNode {
   constructor(context) {this.context=context;this.connections=[];}
   connect(destination,...ports) {this.connections.push({destination,ports});return destination;}
@@ -16,13 +26,13 @@ function fixture() {
   ctx.destination=new AudioNode(ctx);contexts.push(ctx);return ctx;
  }
  let mutation;
- const document={addEventListener(name,fn){listeners[name]=fn;},querySelectorAll(){return media;}};
+ const document={addEventListener(name,fn){listeners[name]=fn;},querySelectorAll(){observation.scans++;return media;}};
  const location={pathname:'/tab/oasis/wonderwall-1'};
  vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../site-audio.js'),'utf8'), {
   AudioNode,HTMLMediaElement,document,location,
-  MutationObserver:class {constructor(fn){mutation=fn;}observe(){}},
+  MutationObserver:class {constructor(fn){mutation=fn;}observe(){observation.active=true;}disconnect(){observation.active=false;}},
  });
- return {AudioNode,HTMLMediaElement,context,media,location,mutation,
+ return {AudioNode,HTMLMediaElement,context,media,location,mutation,observation,
   mute(value){listeners['riff-reel-site-audio']({detail:value});},
   native(context,enabled){listeners['riff-reel-native-audio']({detail:{context,enabled}});},
   emit(name,target){listeners[name]({target});}};
@@ -54,7 +64,7 @@ test('media elements are silenced including dynamic media, and initial mute stat
  f.media.push(audible,muted);f.mute(true);
  assert.equal(audible.muted,true);assert.equal(muted.muted,true);
  audible.muted=false;f.emit('volumechange',audible);assert.equal(audible.muted,true);
- const added=new f.HTMLMediaElement();f.media.push(added);f.mutation();assert.equal(added.muted,true);
+ const added=new f.HTMLMediaElement();f.media.push(added);f.mutation([{addedNodes:[added]}]);assert.equal(added.muted,true);
  const playing=new f.HTMLMediaElement();f.emit('play',playing);assert.equal(playing.muted,true);
  f.mute(false);
  assert.equal(audible.muted,false);assert.equal(muted.muted,true);assert.equal(added.muted,false);assert.equal(playing.muted,false);

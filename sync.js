@@ -67,12 +67,12 @@
   }
   function createAudioMaster({command, scoreCommand, status, now = Date.now}) {
     const state = {available:false,following:false,playing:false,counting:false,waiting:false,position:null,rate:1,offset:0};
+    let inversePoints = [];
     let enabled = true, suspended = false, points = [], video = null, videoPlaying = false, videoRate = 1;
     let lastCorrection = -Infinity, appliedRate = null, pendingVideoSeek = null;
     function align(force = false) {
       if (!enabled || suspended || !state.available || !state.following || state.counting || video === null) return;
-      const inverse = points.map(point => ({score:point.video,video:point.score}));
-      const mapped = mapPosition(inverse, video - state.offset);
+      const mapped = mapPosition(inversePoints, video - state.offset);
       const target = Math.max(0, mapped.seconds);
       state.waiting = mapped.seconds < 0;
       const rate = Math.max(0.1, Math.min(2, videoRate * mapped.slope));
@@ -99,7 +99,7 @@
     }
     function reset(keepOffset = false) {
       const offset = keepOffset ? state.offset : 0;
-      if (!keepOffset) points = [];
+      if (!keepOffset) { points = []; inversePoints = []; }
       Object.assign(state,{available:false,following:false,playing:false,counting:false,waiting:false,position:null,rate:1,offset});
       video = null; videoPlaying = false; videoRate = 1; suspended = false; appliedRate = null; lastCorrection = -Infinity; pendingVideoSeek = null;
     }
@@ -145,7 +145,12 @@
       setSuspended(value) { suspended = value === true; if (suspended) { videoPlaying = false; state.playing = false; pendingVideoSeek = null; } },
       realign() { align(true); },
       getPoints() { return points.map(point => ({...point})); },
-      setPoints(value, realign = true) { points = normalizePoints(value); appliedRate = null; if (realign) align(true); },
+      setPoints(value, realign = true) {
+        points = normalizePoints(value);
+        inversePoints = points.map(point => ({score:point.video,video:point.score}));
+        appliedRate = null;
+        if (realign) align(true);
+      },
       setOffset(value, realign = true) {
         if (!Number.isFinite(value) || Math.abs(value) > 3600) return false;
         state.offset = Math.round(value * 1000) / 1000; if (realign) align(true); return true;

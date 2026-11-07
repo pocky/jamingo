@@ -4,6 +4,10 @@ const vm = require('node:vm');
 const fs = require('node:fs');
 const path = require('node:path');
 const core = require('../core.js');
+test('malformed runtime messages are ignored without starting a search',()=>{
+ const handle=worker(()=>{throw Error('unexpected fetch');});
+ for(const message of [null,undefined,{},'riff-search'])assert.equal(handle(message,{tab:{},url:'https://tabs.ultimate-guitar.com/'},()=>{}),undefined);
+});
 function worker(fetch) {
  let handler;
  vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../background.js'),'utf8'),{

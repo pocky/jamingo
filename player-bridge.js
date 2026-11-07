@@ -4,13 +4,14 @@
 (() => {
   let webpack, service, attachedApi, attachedWasm;
   const nativeMetronome = typeof RiffMetronome !== 'undefined' ? RiffMetronome.create({document,CustomEvent}) : null;
+  let enabled = true;
   let discovering = false, driving = false, drivenPauseUntil = 0;
   let scoreGesture = null;
   const observedPushes = new WeakSet();
   const scanned = new Set();
   const wrappers = new WeakSet();
   function emit(type, values = {}) {
-    if (!location.pathname.startsWith('/tab/')) return;
+    if (!enabled || !location.pathname.startsWith('/tab/')) return;
     document.dispatchEvent(new CustomEvent('riff-reel-player', {detail:JSON.stringify({type,path:location.pathname,driven:driving,...values})}));
   }
   function wrap(object, key, before) {
@@ -25,10 +26,11 @@
     object[key] = wrapped;
   }
   function requestPosition() {
+    if (!enabled) return;
     try { attachedApi?.requestPlaybackSecond?.(); } catch { /* Player may be loading. */ }
   }
   function attach() {
-    if (!location.pathname.startsWith('/tab/')) return;
+    if (!enabled || !location.pathname.startsWith('/tab/')) return;
     if (!webpack) {
       const chunks = globalThis.webpackChunkug_react_i18n_es6;
       if (!Array.isArray(chunks) || chunks.push === Array.prototype.push) return;
@@ -74,7 +76,7 @@
     emit('ready');
   }
   function discover() {
-    if (discovering) return;
+    if (!enabled || discovering) return;
     discovering = true;
     try { attach(); } catch { emit('unavailable'); }
     finally { discovering = false; }
@@ -88,7 +90,7 @@
     }
   }
   function captureScoreGesture(event) {
-    if (event.isTrusted !== true) return;
+    if (!enabled || event.isTrusted !== true) return;
     if (event.type === 'keydown' && !['Enter',' ','ArrowLeft','ArrowRight','Home','End'].includes(event.key)) return;
     const target = event.target;
     if (target?.closest?.('#pro-player-scroll-container') && target.closest('#xtz_canvas,.Xl1Mv')) {
@@ -102,15 +104,23 @@
     if (typeof event.detail !== 'string' || event.detail.length > 200) return;
     let data; try { data = JSON.parse(event.detail); } catch { return; }
     if (!data || typeof data.active !== 'boolean' || typeof data.keep !== 'boolean') return;
-    nativeMetronome?.request(data.active && location.pathname.startsWith('/tab/'), data.keep);
+    nativeMetronome?.request(enabled && data.active && location.pathname.startsWith('/tab/'), data.keep);
   });
   // Begin before the async score load; all later requests use the same adapter.
-  if (typeof setInterval === 'function') setInterval(discover, 250);
+  let discoveryTimer = typeof setInterval === 'function' ? setInterval(discover, 250) : null;
+  function scheduleDiscovery() {
+    if (!enabled && discoveryTimer !== null) {
+      clearInterval(discoveryTimer);
+      discoveryTimer = null;
+    } else if (enabled && discoveryTimer === null && typeof setInterval === 'function') {
+      discoveryTimer = setInterval(discover, 250);
+    }
+  }
 
   document.addEventListener('riff-reel-player-follow', event => {
     if (typeof event.detail !== 'string' || event.detail.length > 300) return;
     let data; try { data = JSON.parse(event.detail); } catch { return; }
-    if (!data || data.path !== location.pathname || !location.pathname.startsWith('/tab/')) return;
+    if (!enabled || !data || data.path !== location.pathname || !location.pathname.startsWith('/tab/')) return;
     driving = true;
     try {
       if (data.type === 'seek' && Number.isFinite(data.value) && data.value >= 0 && data.value <= 86400) {
@@ -124,7 +134,7 @@
   document.addEventListener('riff-reel-player-calibration', event => {
     if (typeof event.detail !== 'string' || event.detail.length > 300) return;
     let data; try { data = JSON.parse(event.detail); } catch { return; }
-    if (!data || data.path !== location.pathname || !location.pathname.startsWith('/tab/')) return;
+    if (!enabled || !data || data.path !== location.pathname || !location.pathname.startsWith('/tab/')) return;
     if (data.type !== 'pause' && data.type !== 'seek') return;
     let ok = false;
     try {
@@ -134,6 +144,14 @@
       }
     } catch { /* Report the failure without interrupting the site's listeners. */ }
     document.dispatchEvent(new CustomEvent('riff-reel-player-calibration-result', {detail:JSON.stringify({type:data.type,ok,path:data.path})}));
+  });
+  document.addEventListener('riff-reel-enabled', event => {
+    if (typeof event.detail !== 'boolean') return;
+    enabled = event.detail;
+    scheduleDiscovery();
+    scoreGesture = null;
+    if (enabled) discover();
+    else nativeMetronome?.request(false, false);
   });
   document.addEventListener('riff-reel-player-position-request', requestPosition);
 })();

@@ -2,9 +2,9 @@
 .DELETE_ON_ERROR:
 
 PYTHON ?= python3
-ARCHIVE := dist/riff-reel.zip
-EXTENSION_FILES := riff-reel/manifest.json riff-reel/core.js \
-	riff-reel/background.js riff-reel/content.js riff-reel/site-audio.js riff-reel/native-metronome.js riff-reel/sync.js riff-reel/player-bridge.js riff-reel/README.md
+ARCHIVE := dist/jamingo.zip
+EXTENSION_FILES := manifest.json core.js \
+	background.js content.js site-audio.js native-metronome.js sync.js player-bridge.js README.md icons
 
 .PHONY: zip FORCE
 

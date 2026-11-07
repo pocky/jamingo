@@ -6,14 +6,148 @@ const path = require('node:path');
 const vm = require('node:vm');
 const RiffCore = require('../core.js');
 const fixture = fs.readFileSync(path.join(__dirname,'fixtures/official-player.html'),'utf8');
+test('disabling releases UG audio and ignores native controls and late video events; enabling restores saved choices',async()=>{
+ const f=await setup();
+ f.saved[songStorageKey]='abcdefghijk';
+ const pointsKey=RiffCore.pointsKey(songStorageKey,'abcdefghijk');
+ f.saved[pointsKey]=[{score:10,video:12}];
+ const button=f.document.querySelectorAll('#pro-player-scroll-container button')[1];
+ f.click(button);assert.equal(f.muting.at(-1),true);
+ const oldFrame=f.panel.querySelector('iframe');
+ f.click(f.panel.querySelector('#toggle-enabled'));await flush();
+ assert.equal(f.saved['riff-reel:enabled'],false);
+ assert.equal(f.panel.querySelector('#panel').dataset.enabled,'false');
+ assert.equal(f.panel.querySelector('iframe'),null);
+ assert.equal(f.muting.at(-1),false);
+ const count=f.commands.length,following=f.followRequests.length;
+ f.click(button);
+ f.document.dispatchEvent(new f.document.defaultView.CustomEvent('riff-reel-player',{detail:JSON.stringify({path:f.location.pathname,type:'start'})}));
+ const event=new f.document.defaultView.Event('message');
+ Object.assign(event,{origin:'https://www.youtube.com',source:oldFrame.contentWindow,data:JSON.stringify({event:'onStateChange',info:1})});
+ f.document.defaultView.dispatchEvent(event);f.tick();
+ assert.equal(f.commands.length,count);assert.equal(f.followRequests.length,following);assert.equal(f.muting.at(-1),false);
+ f.click(f.panel.querySelector('#toggle-enabled'));await flush();
+ assert.equal(f.saved['riff-reel:enabled'],true);
+ assert.match(f.panel.querySelector('iframe').src,/abcdefghijk/);
+ assert.deepEqual(f.saved[pointsKey],[{score:10,video:12}]);
+ assert.match(f.panel.querySelector('#point-list').textContent,/10.000 s → 12.000 s/);
+ f.panel.querySelector('iframe').dispatchEvent(new f.document.defaultView.Event('load'));
+ f.message({event:'infoDelivery',info:{}});
+ f.click(button);assert.equal(f.commands.at(-1).data.func,'playVideo');
+});
+test('disabled preference survives a new page, navigation, and Close mode without loading YouTube',async()=>{
+ const f=await setup(undefined,undefined,{saved:{'riff-reel:enabled':false,'riff-reel:panel-mode':'closed'}});
+ assert.equal(f.panel.querySelector('#toggle-enabled').getAttribute('aria-checked'),'false');
+ assert.equal(f.panel.querySelector('iframe'),null);assert.equal(f.searches.length,0);
+ f.location.pathname='/tab/other/song-1';f.tick();await flush();
+ assert.equal(f.searches.length,0);assert.equal(f.commands.length,0);
+ f.location.pathname='/explore';f.tick();assert.equal(f.document.querySelector('#riff-reel'),null);
+ f.location.pathname='/tab/other/song-1';f.tick();assert.ok(f.document.querySelector('#riff-reel'));
+ f.click(f.panel.querySelector('#toggle-enabled'));await flush();assert.ok(f.panel.querySelector('iframe'));
+});
+test('disable cancels an unsaved calibration without issuing further UG commands',async()=>{
+ const f=await setup();startSync(f);pickTab(f,10);
+ const count=f.calibrationRequests.length;
+ f.click(f.panel.querySelector('#toggle-enabled'));await flush();
+ assert.equal(f.calibrationRequests.length,count);assert.equal(f.muting.at(-1),false);
+ assert.equal(f.panel.querySelector('#point-editor').hidden,true);
+ assert.equal(f.saved[RiffCore.pointsKey(songStorageKey,'dQw4w9WgXcQ')],undefined);
+});
+test('disable invalidates a pending search and storage changes apply across tabs',async()=>{
+ let finishSearch;const f=await setup(undefined,undefined,{search:()=>new Promise(resolve=>{finishSearch=resolve;})});
+ f.storageChanged({'riff-reel:enabled':{newValue:false}},'local');
+ finishSearch({videos:[{id:'dQw4w9WgXcQ',title:'Late result'}]});await flush();
+ assert.equal(f.panel.querySelector('iframe'),null);assert.equal(f.panel.querySelector('#panel').dataset.enabled,'false');
+ f.storageChanged({'riff-reel:enabled':{newValue:true}},'sync');assert.equal(f.panel.querySelector('#panel').dataset.enabled,'false');
+});
+test('failed preference writes keep UG released and explain that the setting was not saved',async()=>{
+ const f=await setup(undefined,undefined,{set:async()=>{throw Error('disk');}});
+ f.click(f.panel.querySelector('#toggle-enabled'));await flush();
+ assert.equal(f.muting.at(-1),false);assert.match(f.panel.querySelector('#enabled-status').textContent,/Could not save/);
+});
+test('new installations and unreadable preferences start disabled without loading YouTube',async()=>{
+ for(const options of [{defaultDisabled:true},{defaultDisabled:true,get:async()=>{throw Error('storage unavailable');}}]){
+  const f=await setup(undefined,undefined,options);
+  assert.equal(f.panel.querySelector('#toggle-enabled').getAttribute('aria-checked'),'false');
+  assert.equal(f.panel.querySelector('iframe'),null);assert.equal(f.searches.length,0);
+ }
+});
+test('removing the enabled preference returns to the disabled default',async()=>{
+ const f=await setup();
+ f.storageChanged({'riff-reel:enabled':{newValue:undefined}},'local');
+ assert.equal(f.panel.querySelector('#toggle-enabled').getAttribute('aria-checked'),'false');
+ assert.equal(f.panel.querySelector('iframe'),null);assert.equal(f.muting.at(-1),false);
+});
+test('disabled polling does not detach and reinsert the launcher',async()=>{
+ const f=await setup(undefined,undefined,{defaultDisabled:true});
+ let appends=0;const original=f.document.documentElement.append;
+ f.document.documentElement.append=function(...args){appends++;return original.apply(this,args);};
+ for(let i=0;i<100;i++)f.tick();
+ assert.equal(appends,0);assert.equal(f.searches.length,0);
+});
+test('calibration telemetry preserves existing point buttons and keyboard focus targets',async()=>{
+ const f=await setup();
+ await addPoint(f,10,12);startSync(f);
+ const edit=f.panel.querySelector('#point-list button');
+ assert.ok(edit);
+ for(let i=0;i<100;i++)f.message({event:'infoDelivery',info:{currentTime:12+i/1000,playerState:2}});
+ assert.equal(f.panel.querySelector('#point-list button'),edit);
+});
+test('no messages target a loading iframe; pending Play resumes only after YouTube is ready',async()=>{
+ const f=await setup(undefined,undefined,{frameLoaded:false});
+ f.click(f.document.querySelectorAll('#pro-player-scroll-container button')[1]);
+ f.tick();assert.equal(f.commands.length,0);
+ f.frame.dispatchEvent(new f.document.defaultView.Event('load'));
+ assert.equal(f.commands.at(-1).data.event,'listening');
+ f.message({event:'onReady'});
+ assert.equal(f.commands.at(-1).data.func,'playVideo');
+ assert.ok(f.commands.every(command=>command.origin===(command.data.event==='listening'?'*':'https://www.youtube.com')));
+});
+test('a temporarily unavailable iframe does not break native transport handling',async()=>{
+ let failed=true;
+ const f=await setup(undefined,undefined,{postMessage(){if(failed)throw Error('frame navigated');}});
+ assert.doesNotThrow(()=>f.click(f.document.querySelectorAll('#pro-player-scroll-container button')[1]));
+ failed=false;f.message({event:'onReady'});
+ assert.equal(f.commands.at(-1).data.func,'playVideo');
+});
+test('loaded same-origin iframe never receives YouTube messages',async()=>{
+ const f=await setup();
+ Object.defineProperty(f.frame,'contentDocument',{value:f.document});
+ const count=f.commands.length;
+ f.frame.dispatchEvent(new f.document.defaultView.Event('load'));
+ f.click(f.document.querySelectorAll('#pro-player-scroll-container button')[1]);f.tick();
+ assert.equal(f.commands.length,count);
+});
+test('single transport button follows clicks, YouTube pause and video completion',async()=>{
+ const f=await setup(),button=f.panel.querySelector('#play');
+ assert.equal(f.panel.querySelector('#pause'),null);
+ assert.equal(button.getAttribute('aria-label'),'Play');
+ f.click(button);assert.equal(button.getAttribute('aria-label'),'Pause');assert.equal(f.commands.at(-1).data.func,'playVideo');
+ f.click(button);assert.equal(button.getAttribute('aria-label'),'Play');assert.equal(f.commands.at(-1).data.func,'pauseVideo');
+ f.message({event:'onStateChange',info:1});assert.equal(button.getAttribute('aria-label'),'Pause');
+ assert.equal(f.panel.querySelector('#status').textContent,'');
+ f.message({event:'onStateChange',info:2});assert.equal(button.getAttribute('aria-label'),'Play');
+ f.message({event:'infoDelivery',info:{playerState:1}});assert.equal(button.getAttribute('aria-label'),'Pause');
+ f.message({event:'onStateChange',info:0});assert.equal(button.getAttribute('aria-label'),'Play');
+});
+test('commands wait for a verified response; only the public handshake uses a wildcard',async()=>{
+ const f=await setup(undefined,undefined,{verifyOrigin:false});
+ f.click(f.document.querySelectorAll('#pro-player-scroll-container button')[1]);
+ assert.equal(f.commands.length,0);
+ f.tick();assert.ok(f.commands.every(command=>command.data.event==='listening'&&command.origin==='*'));
+ f.message({event:'onReady'});
+ assert.equal(f.commands.at(-1).data.func,'playVideo');assert.equal(f.commands.at(-1).origin,'https://www.youtube.com');
+});
 async function setup(html = fixture, videos = [{id:'dQw4w9WgXcQ',title:'Clip'}], options = {}) {
  const {window,document} = parseHTML(`<html><head><title>Snowblind OFFICIAL by Black Sabbath @ Ultimate-Guitar.Com</title></head><body>${html}</body></html>`);
- const commands = [], muting = [], exported = [], downloads = [], saved = options.saved || {};
+ const commands = [], muting = [], exported = [], downloads = [], searches = [], saved = options.saved || {};
+ if (!options.defaultDisabled && saved['riff-reel:enabled'] === undefined) saved['riff-reel:enabled']=true;
+ let storageChanged;
  const createElement=document.createElement.bind(document);
  document.createElement=(name,...args)=>{
   const element=createElement(name,...args);
   if(name==='a')element.click=()=>downloads.push({name:element.download,url:element.href});
-  if(name==='iframe')Object.defineProperty(element,'contentWindow',{value:{postMessage(payload,origin){commands.push({data:JSON.parse(payload),origin});}}});
+  if(name==='iframe')Object.defineProperty(element,'contentWindow',{value:{postMessage(payload,origin){if(options.postMessage)options.postMessage(payload,origin);commands.push({data:JSON.parse(payload),origin});}}});
   return element;
  };
  const location = {pathname:'/tab/black-sabbath/snowblind-official-2074495',origin:'https://tabs.ultimate-guitar.com'};
@@ -37,7 +171,7 @@ async function setup(html = fixture, videos = [{id:'dQw4w9WgXcQ',title:'Clip'}],
   clearInterval(id){intervals.delete(id);},
   setTimeout(fn){const id=++timerId;timeouts.set(id,fn);return id;},
   clearTimeout(id){timeouts.delete(id);},
-  chrome:{storage:{local:{get:async key=>options.get?options.get(key):({[key]:saved[key]}),set:async data=>options.set?options.set(data):Object.assign(saved,data),remove:async key=>delete saved[key]}},runtime:{getManifest:()=>({version:'1.2.0'}),sendMessage:async()=>({videos,error:videos.length?undefined:'No results'})}},
+  chrome:{storage:{onChanged:{addListener(fn){storageChanged=fn;}},local:{get:async key=>options.get?options.get(key):({[key]:saved[key]}),set:async data=>options.set?options.set(data):Object.assign(saved,data),remove:async key=>delete saved[key]}},runtime:{getManifest:()=>({version:'1.2.0'}),sendMessage:async()=>{searches.push(true);return options.search?options.search():({videos,error:videos.length?undefined:'No results'});}}},
  });
  await new Promise(resolve=>setImmediate(resolve));
  const panel=document.querySelector('#riff-reel').shadowRoot;
@@ -45,6 +179,7 @@ async function setup(html = fixture, videos = [{id:'dQw4w9WgXcQ',title:'Clip'}],
  panel.querySelector('#sync-player').checked = true;
  panel.querySelector('#replace-audio').checked = panel.querySelector('#replace-audio').hasAttribute('checked');
  const frame=panel.querySelector('iframe');
+ if(frame && options.frameLoaded!==false){frame.dispatchEvent(new window.Event('load'));if(options.verifyOrigin!==false)message({event:'infoDelivery',info:{}});commands.length=0;}
 
  function click(element) {element.dispatchEvent(new window.Event('click',{bubbles:true,composed:true}));}
  function message(data) {
@@ -52,7 +187,7 @@ async function setup(html = fixture, videos = [{id:'dQw4w9WgXcQ',title:'Clip'}],
   Object.assign(event,{origin:'https://www.youtube.com',source:panel.querySelector('iframe').contentWindow,data:JSON.stringify(data)});
   window.dispatchEvent(event);
  }
- return {document,panel,frame,commands,muting,click,message,tick,location,intervals,timeouts,saved,calibrationRequests,followRequests,exported,downloads};
+ return {document,panel,frame,commands,muting,click,message,tick,location,intervals,timeouts,saved,calibrationRequests,followRequests,exported,downloads,searches,storageChanged};
 }
 test('user-supplied Official SVG Play sends a command immediately and retries when ready',async()=>{
  const f=await setup();
@@ -67,7 +202,7 @@ test('user-supplied Official SVG Play sends a command immediately and retries wh
  f.message({event:'onReady'});
  assert.equal(f.commands.filter(c=>c.data.func==='playVideo').length,2);
  f.message({event:'onStateChange',info:1});
- assert.equal(f.panel.querySelector('#status').textContent,'Video playing.');
+ assert.equal(f.panel.querySelector('#status').textContent,'');
  // React keeps the button but replaces its children when showing Pause.
  buttons[1].innerHTML='<svg><path d="M5 2h4v16H5zm6 0h4v16h-4z"/></svg>';
  f.click(buttons[1].querySelector('svg'));

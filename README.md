@@ -1,4 +1,4 @@
-# Riff Reel
+# Jamingo
 
 A Manifest V3 extension for **Chrome and Brave** (Chromium 111 or newer). Play a YouTube video alongside an Ultimate Guitar tab, remember your preferred versions and calibrate timing for each song and video. The interface is in English.
 
@@ -12,23 +12,25 @@ For updates, replace the extension files, reload the extension on the extensions
 
 ## Build and download
 
-From the parent `music` folder, run `make` or `make zip`. Make and Python 3 are required. This recreates `dist/riff-reel.zip` containing the manifest at its root, runtime scripts and this guide. Dependencies and tests are excluded.
+From the `riff-reel` project folder, run `make` or `make zip`. Make and Python 3 are required. This recreates `dist/jamingo.zip` containing the manifest at its root, runtime scripts and this guide. Dependencies and tests are excluded.
 
 From your computer, replace `user@server` with your SSH connection:
 
 ```sh
-scp user@server:/home/pocky/Sites/perso/music/dist/riff-reel.zip .
+scp user@server:/home/pocky/Sites/perso/music/riff-reel/dist/jamingo.zip .
 ```
 
 Extract the ZIP into a folder and load that folder as an unpacked extension.
 
 ## Panel modes
 
+Jamingo starts disabled until you enable it; your choice is then remembered. Its name is bold blue when enabled and regular gray when disabled. Use the **power switch** in the header to use Ultimate Guitar on its own. This stops and removes the YouTube player, restores site audio (including instrument levels when preserving the metronome), cancels any unsaved Sync mode draft, and stops Jamingo from responding to Ultimate Guitar playback controls. The choice is saved in this browser and applies to other open tabs. Saved video choices and sync points are kept. When disabled, the panel becomes a small **Jamingo** launcher. Click its name or power switch to resume; playback does not start automatically.
+
 Use the header to switch between three layouts:
 
 - **Open** shows the video and all controls, grouped into **Playback & audio**, **Sync points** and **Video versions**.
 - **Video** keeps the video, song title, Play/Pause and playback messages visible while hiding settings.
-- **Close** collapses the panel into a small Riff Reel launcher. Click it to reopen.
+- **Close** collapses the panel into a small Jamingo launcher. Click it to reopen.
 
 The chosen mode is remembered locally. Switching modes keeps the same iframe and does not issue play, pause or seek commands. Entering Sync mode expands the full panel and its calibration section. The panel fits narrow viewports, scrolls within the available height, and exposes keyboard focus indicators.
 
@@ -49,13 +51,13 @@ Recognized Play/Pause/Stop controls on Ultimate Guitar control the video. **Repl
 - Between sync points, UG's playback speed is adjusted to follow the recording. Remaining drift is corrected by repositioning the tab, at most once every 500 ms.
 - Clicking a measure seeks YouTube to its matching time using the sync points. Seeking in YouTube moves the tab in the other direction. Paused navigation stays paused; normal playback still follows the audio without automatic video seeks. Only an explicit pointer or keyboard gesture on the score canvas or Parts timeline can navigate YouTube; native position callbacks alone never do so, including late or beat-rounded correction callbacks.
 
-The panel's **Clip** and **Pause** buttons control YouTube. Collapsing the panel does not stop playback. Unchecking **Align tab to YouTube audio** retains simple Play/Pause linking. Sync mode temporarily suspends automatic following so you can calibrate both players independently.
+The panel's single **Play/Pause** button controls YouTube and follows its playback state. Collapsing the panel does not stop playback. Unchecking **Align tab to YouTube audio** retains simple Play/Pause linking. Sync mode temporarily suspends automatic following so you can calibrate both players independently.
 
 The adapter identifies the existing XTZ service by its factory signature in the site's Webpack runtime, without hardcoded module numbers. It preserves original player calls. This is an internal interface and may change. The implementation was based on the public [October 2026 player module](https://tabs.ultimate-guitar.com/static/public/build/ug_react_i18n_es6/202610/8811.183687d6cad60a528268428ad961cf8a.js), located through a saved page supplied by the user. If the adapter cannot connect, the panel reports it and simple Play/Pause remains available.
 
 ## Keep the UG metronome over YouTube
 
-Enable the metronome using **Ultimate Guitar's own metronome switch**, then check **Keep UG metronome** in Riff Reel and start playback from UG. **Replace site audio** must also be enabled for instrument isolation to apply.
+Enable the metronome using **Ultimate Guitar's own metronome switch**, then check **Keep UG metronome** in Jamingo and start playback from UG. **Replace site audio** must also be enabled for instrument isolation to apply.
 
 The extension preserves the native metronome rather than generating new clicks. It uses UG's current tempo, meter, metronome switch and master volume. If UG's master volume is zero or muted, the clicks will also be silent. Timing calibration aligns the tab to the recording, and the native metronome follows the adjusted tab tempo. Beats are not detected automatically.
 
@@ -94,7 +96,7 @@ Calibration is saved automatically per song and video and restored on future vis
 
 In **Sync points**, use **Export sync file** to download a `.riff-sync.json` file containing the current song, YouTube video ID and saved points. Empty calibrations can also be exported. Files can be edited in a text editor or shared with someone using the same tab and recording.
 
-Use **Import sync file** to select a file. Riff Reel validates the format, version, artist/song and exact YouTube ID before showing how many saved points will be replaced. Click **Replace saved points** to persist the replacement, or **Cancel import** to leave the calibration unchanged. Import replaces rather than merges points. An empty points array explicitly clears the calibration after confirmation. Failed writes keep the previous calibration and allow retrying.
+Use **Import sync file** to select a file. Jamingo validates the format, version, artist/song and exact YouTube ID before showing how many saved points will be replaced. Click **Replace saved points** to persist the replacement, or **Cancel import** to leave the calibration unchanged. Import replaces rather than merges points. An empty points array explicitly clears the calibration after confirmation. Failed writes keep the previous calibration and allow retrying.
 
 Version 1 uses this structure:
 
@@ -137,7 +139,9 @@ npm run check
 npm run test:browser
 ```
 
-Browser tests use `/usr/bin/chromium` by default; set `PLAYWRIGHT_CHROMIUM_EXECUTABLE` to another Chromium executable if needed. Browser execution has been unavailable in this environment; unit and DOM tests can run independently.
+Browser tests use `/usr/bin/chromium` by default; set `PLAYWRIGHT_CHROMIUM_EXECUTABLE` to another Chromium executable if needed. Unit and DOM tests can run independently of Chromium. Browser tests use simulated Ultimate Guitar and YouTube pages; they do not replace a check against the live site.
+
+Performance regression tests cover disabled player discovery, inactive audio observation, subtree-only media scans, stable calibration controls during telemetry, and bounded YouTube result traversal. A lightweight one-second navigation check remains active while the extension is disabled so the launcher can follow Ultimate Guitar navigation. Audio graph interception remains installed from document start to support later activation.
 
 - `core.js`: storage keys, video URL validation and search result parsing.
 - `background.js`: YouTube search, restricted to messages from Ultimate Guitar tabs.

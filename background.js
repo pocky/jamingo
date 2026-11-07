@@ -1,6 +1,6 @@
 importScripts('core.js');
 chrome.runtime.onMessage.addListener((message, sender, reply) => {
-  if (message.type !== 'riff-search') return;
+  if (message?.type !== 'riff-search') return;
   if (!sender.tab || !sender.url?.startsWith('https://tabs.ultimate-guitar.com/')) return;
   const query = String(message.query || '').slice(0, 200);
   (async () => {

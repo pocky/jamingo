@@ -5,6 +5,7 @@
   function offsetKey(key, id) { return `offset:${JSON.stringify([key, id])}`; }
   function pointsKey(key, id) { return `points:${JSON.stringify([key, id])}`; }
   function videoId(input) {
+    if (typeof input !== 'string') return null;
     const raw = input.trim();
     if (/^[\w-]{11}$/.test(raw)) return raw;
     try {
@@ -20,18 +21,26 @@
     } catch { return null; }
   }
   function videosFromData(data) {
-    const result = [], seen = new Set();
-    function visit(node) {
-      if (!node || typeof node !== 'object') return;
-      const v = node.videoRenderer;
-      if (v && videoId(v.videoId || '') && !seen.has(v.videoId)) {
-        seen.add(v.videoId);
-        result.push({id: v.videoId, title: v.title?.runs?.map(r => r.text).join('') || 'YouTube video'});
+    const result = [], seen = new Set(), visited = new WeakSet(), pending = [data];
+    // Iterative traversal handles deeply nested responses without growing the
+    // call stack. Stop as soon as the eight displayed results are available.
+    while (pending.length && result.length < 8) {
+      const node = pending.pop();
+      if (!node || typeof node !== 'object' || visited.has(node)) continue;
+      visited.add(node);
+      const video = node.videoRenderer;
+      if (video && videoId(video.videoId) && !seen.has(video.videoId)) {
+        seen.add(video.videoId);
+        const runs = Array.isArray(video.title?.runs) ? video.title.runs : [];
+        const title = runs.map(run => typeof run?.text === 'string' ? run.text : '').join('');
+        result.push({id:video.videoId,title:title || 'YouTube video'});
       }
-      for (const value of Object.values(node)) if (typeof value === 'object') visit(value);
+      const values = Object.values(node);
+      for (let i = values.length - 1; i >= 0; i--) {
+        if (values[i] && typeof values[i] === 'object') pending.push(values[i]);
+      }
     }
-    visit(data);
-    return result.slice(0, 8);
+    return result;
   }
   function searchData(html) {
     const match = /(?:var\s+ytInitialData\s*=|window\["ytInitialData"\]\s*=)\s*/g.exec(html);

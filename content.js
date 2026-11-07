@@ -1,6 +1,8 @@
 (() => {
+  // Keep legacy storage keys and bridge names so the Jamingo rename preserves user data.
   let currentKey = '', generation = 0, frame, chosen, song, results = [];
-  let wantedPlaying = false, ready = false, host;
+  let wantedPlaying = false, ready = false, frameLoaded = false, videoOriginVerified = false, host;
+  let enabled = false, enabledReady = false, enabledRevision = 0, enabledWrites = Promise.resolve();
   let videoGeneration = 0, calibrationReady = false, calibrationRevision = 0, calibrationWrites = Promise.resolve();
   let reportedVideoSample = null, videoSample = null, videoState = null, videoRate = 1, calibration = null;
   let replacementActive = false, pointWrite = null, importDraft = null, importReading = false, importRequest = 0;
@@ -16,14 +18,14 @@
       button,input,select{border:1px solid var(--line);border-radius:7px;background:#fff;padding:9px 11px;min-height:38px;max-width:100%}
       button:hover:not(:disabled){background:#e3ebfa;border-color:#90a9d4}button:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visible,a:focus-visible{outline:3px solid #3972dc;outline-offset:3px}
       .shell{width:410px;max-width:calc(100vw - 32px);background:var(--paper);border:1px solid #b6c5d8;border-radius:18px;box-shadow:0 16px 54px #17304f38;overflow:hidden}
-      .topbar{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 14px;background:#fff;border-bottom:1px solid var(--line)}
-      .brand{display:flex;align-items:center;gap:9px;border:0;background:transparent;padding:0;min-height:34px;font-weight:750;letter-spacing:-.4px;white-space:nowrap}
+      .topbar{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:12px 14px;background:#fff;border-bottom:1px solid var(--line)}
+      .brand{display:flex;align-items:center;gap:9px;border:0;background:transparent;padding:0;min-height:34px;font-weight:700;color:var(--blue);letter-spacing:-.4px;white-space:nowrap}
       .mark{display:grid;place-items:center;width:30px;height:30px;border-radius:9px;background:var(--blue);color:#fff;font-size:18px;letter-spacing:-3px;padding-right:3px}
       .modes{display:flex;gap:2px;padding:3px;background:#e9eef5;border-radius:8px}.modes button{border:0;min-height:29px;padding:4px 8px;font-size:12px;background:transparent;border-radius:5px}.modes button[aria-pressed="true"]{background:#fff;color:var(--blue);box-shadow:0 1px 4px #23354b20;font-weight:700}
       .body{max-height:calc(100dvh - 120px);overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin}
       .player{padding:18px 18px 8px;background:#fff}h2{font-size:20px;line-height:1.25;letter-spacing:-.5px;margin:0 0 14px;font-weight:700;overflow-wrap:anywhere}
       iframe{display:block;width:100%;aspect-ratio:16/9;border:0;border-radius:9px;background:#182333}#video:empty{display:none}
-      .row{display:flex;align-items:center;gap:8px;margin:10px 0;flex-wrap:wrap}.transport{display:grid;grid-template-columns:1fr 1fr;margin:12px 0 0}.transport button{font-weight:650}
+      .row{display:flex;align-items:center;gap:8px;margin:10px 0;flex-wrap:wrap}.transport{display:grid;grid-template-columns:1fr;margin:12px 0 0}.transport button{font-weight:650}
       #play,#point-save,#points-replace{background:var(--blue);border-color:var(--blue);color:#fff}#play:hover:not(:disabled),#point-save:hover:not(:disabled),#points-replace:hover:not(:disabled){background:#1c3e91}
       p{font-size:12px;line-height:1.6;color:var(--muted);margin:8px 0}p:empty{display:none}#status{margin:8px 0 2px;overflow-wrap:anywhere}
       .settings{padding:6px 18px 16px}.settings>details{border-top:1px solid var(--line);padding:2px 0;background:transparent}
@@ -33,19 +35,37 @@
       fieldset{border:0;margin:0;padding:0;min-width:0}.time-control{margin:12px 0;background:#fff;border-left:3px solid #9eb2cf;padding:10px 12px;border-radius:0 8px 8px 0}.time-control label{margin:0;color:var(--muted);font-size:12px;font-weight:600}.time-control input{font:600 24px/1.3 "Consolas",monospace;font-variant-numeric:tabular-nums;letter-spacing:-.7px;margin:8px 0}
       .time-steps{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px}.time-steps button{padding:6px 2px;font-size:12px;white-space:nowrap;min-height:32px}
       #point-list .row{padding:10px 0;border-bottom:1px solid var(--line);gap:6px}#point-list span{font:12px "Consolas",monospace;flex:1 1 100%;color:var(--ink)}#point-list button{padding:4px 10px;min-height:30px;font-size:12px}
-      #points-preview{padding:10px;background:#dee8fb;border-radius:8px}#point-editor{margin-top:12px}a{color:var(--blue);text-underline-offset:3px;font-size:12px}.help{border-top:1px solid var(--line);padding-top:12px;margin-top:8px}
+      #points-preview{padding:10px;background:#dee8fb;border-radius:8px}#point-editor{margin-top:12px}a{color:var(--blue);text-underline-offset:3px;font-size:12px}.header-actions{display:flex;align-items:center;gap:4px;flex:none}
+      #help-toggle{width:32px;min-height:32px;padding:0;border:0;border-radius:50%;background:transparent;color:var(--muted);font-weight:700;font-size:16px}
+      #help-toggle:hover,#help-toggle[aria-expanded="true"]{background:#e3ebfa;color:var(--blue)}
+      #playback-help{margin:0;padding:12px 16px;background:#fff;border-bottom:1px solid var(--line)}
+      .shell[data-enabled="false"] .body,.shell[data-enabled="false"] .modes{display:none}
+      #toggle-enabled{display:grid;place-items:center;flex:none;width:32px;min-height:32px;padding:6px;border:0;border-radius:50%;background:#e3ebfa;color:var(--blue)}
+      #toggle-enabled svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round}
+      #toggle-enabled[aria-checked="false"]{background:#e9eef5;color:var(--muted)}
+      #toggle-enabled:hover:not(:disabled){background:#d4e0f7}
+      #enabled-status{padding:0 14px}
+      .shell[data-enabled="false"]{width:auto;border-radius:40px}
+      .shell[data-enabled="false"] .topbar{padding:9px 10px;border:0}
+      .shell[data-enabled="false"] .brand{color:var(--muted);font-weight:400}
+      .shell[data-enabled="false"] .mark{background:#e9eef5;color:var(--muted)}
       .shell[data-mode="video"]{width:350px}.shell[data-mode="video"] .settings{display:none}.shell[data-mode="video"] h2{font-size:16px}.shell[data-mode="video"] .player{padding:14px}
       .shell[data-mode="closed"]{width:auto;border-radius:40px}.shell[data-mode="closed"] .body,.shell[data-mode="closed"] .modes{display:none}.shell[data-mode="closed"] .topbar{padding:9px 14px 9px 10px;border:0}.shell[data-mode="closed"] .brand{min-height:30px}
+      .shell[data-mode="closed"][data-help="true"],.shell[data-enabled="false"][data-help="true"]{width:350px;border-radius:18px}
       @media(max-width:480px){:host{right:12px;bottom:12px}.shell{width:calc(100vw - 24px);max-width:calc(100vw - 24px)}.topbar{gap:6px}.player,.settings{padding-left:14px;padding-right:14px}}
+      @media(max-width:380px){.topbar{gap:4px}.modes button{padding:4px 5px}.shell[data-enabled="true"]:not([data-mode="closed"]) .brand .mark{display:none}}
       @media(prefers-reduced-motion:no-preference){button{transition:background-color .12s,border-color .12s}}
     </style>
     <div class="shell" id="panel" data-mode="open">
-      <header class="topbar"><button class="brand" id="reopen" title="Open Riff Reel" aria-label="Open Riff Reel"><span class="mark" aria-hidden="true">♫</span>Riff Reel</button>
+      <header class="topbar"><button class="brand" id="reopen" title="Open Jamingo" aria-label="Open Jamingo"><span class="mark" aria-hidden="true">♫</span>Jamingo</button>
         <nav class="modes" aria-label="Panel mode"><button id="mode-open" aria-pressed="true" title="Show all controls">Open</button><button id="mode-video" aria-pressed="false" title="Show video and playback controls">Video</button><button id="mode-closed" aria-pressed="false" title="Collapse to a small launcher">Close</button></nav>
+        <div class="header-actions"><button id="help-toggle" type="button" aria-label="Playback help" aria-expanded="false" aria-controls="playback-help" title="Playback help">?</button><button id="toggle-enabled" type="button" role="switch" aria-label="Jamingo" aria-checked="false" title="Enable Jamingo" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v9M6.4 5.6a8 8 0 1 0 11.2 0"/></svg></button></div>
       </header>
+      <p id="playback-help" hidden>Play on the tab starts the video and replaces site audio. If playback is blocked, click Play inside the video. After the count-in, the tab follows YouTube audio. Navigate from either player; use Sync mode to calibrate.</p>
+      <p id="enabled-status" role="status" aria-live="polite"></p>
       <div class="body"><section class="player" aria-label="Video player">
       <h2 id="song"></h2><div id="video"></div>
-      <div class="row transport"><button id="play">▶ Play</button><button id="pause">Ⅱ Pause</button></div>
+      <div class="row transport"><button id="play" aria-label="Play">▶ Play</button></div>
       <p id="status" role="status" aria-live="polite"></p></section>
       <div class="settings">
       <details open><summary>Playback & audio</summary><div>
@@ -82,15 +102,26 @@
       <div class="row"><button id="save">Use and remember</button><button id="reset">Forget choice</button></div>
       <a id="youtube" target="_blank" rel="noopener noreferrer">Search YouTube ↗</a>
       </div></details>
-      <p class="help">Play on the tab starts the video and replaces site audio. If playback is blocked, click Play inside the video. After the count-in, the tab follows YouTube audio. Navigate from either player; use Sync mode to calibrate.</p>
     </div></div></div>`;
   const $ = id => shadow.getElementById(id);
+  function setHelpOpen(open) {
+    $('playback-help').hidden = !open;
+    $('help-toggle').setAttribute('aria-expanded', String(open));
+    $('panel').dataset.help = String(open);
+  }
+  $('help-toggle').onclick = () => setHelpOpen($('playback-help').hidden);
+  shadow.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && !$('playback-help').hidden) {
+      setHelpOpen(false);
+      $('help-toggle').focus();
+    }
+  });
   let panelMode = 'open', modeRevision = 0, modeWrites = Promise.resolve();
   function setPanelMode(mode, persist = true) {
     if (!['open','video','closed'].includes(mode)) return;
     panelMode = mode; $('panel').dataset.mode = mode;
     for (const value of ['open','video','closed']) $('mode-'+value).setAttribute('aria-pressed',String(mode === value));
-    $('reopen').setAttribute('aria-expanded',String(mode !== 'closed'));
+    $('reopen').setAttribute('aria-expanded',String(enabled && mode !== 'closed'));
     if (persist) {
       modeRevision++;
       modeWrites = modeWrites.catch(() => {}).then(() => chrome.storage.local.set({'riff-reel:panel-mode':mode})).catch(() => {});
@@ -100,7 +131,11 @@
     setPanelMode(mode);
     if (mode === 'closed') $('reopen').focus();
   };
-  $('reopen').onclick = () => { setPanelMode('open'); $('mode-open').focus(); };
+  $('reopen').onclick = () => {
+    if (!enabled) $('toggle-enabled').onclick();
+    setPanelMode('open');
+    $('mode-open').focus();
+  };
   chrome.storage.local.get('riff-reel:panel-mode').then(stored => {
     if (modeRevision === 0) setPanelMode(stored['riff-reel:panel-mode'] || 'open', false);
   }).catch(() => {});
@@ -118,17 +153,39 @@
     const match = document.title.match(/^(.*?)\s+(?:CHORDS|TABS?|BASS|UKULELE|GUITAR PRO|OFFICIAL)(?:\s+\([^)]*\))?\s+by\s+(.*?)\s+(?:@|\|)/i);
     return match ? {title: match[1], artist: match[2]} : null;
   }
+  const videoOrigin = 'https://www.youtube.com';
+  function postToVideo(message) {
+    // A newly inserted iframe initially inherits UG's origin (about:blank).
+    // Wait for its navigation before using the strictly scoped YouTube API.
+    if (!frameLoaded || !frame?.isConnected || !frame.contentWindow) return false;
+    try {
+      // A load event can also belong to about:blank or a UG error page.
+      // A readable document proves that this is not the cross-origin player.
+      if (frame.contentDocument) { videoOriginVerified = false; return false; }
+      const handshake = message.event === 'listening';
+      if (!handshake && !videoOriginVerified) return false;
+      // The public, data-free handshake can race iframe navigation. Commands
+      // remain restricted to YouTube after a response validates origin + source.
+      frame.contentWindow.postMessage(JSON.stringify(message), handshake ? '*' : videoOrigin);
+      return true;
+    } catch {
+      // The frame can disappear during navigation. Pending Play is retried
+      // after a valid onReady message from the current YouTube window.
+      return false;
+    }
+  }
   function command(name, args = []) {
+    if (!enabled) return;
     if (!calibrationReady && ['playVideo','seekTo','setPlaybackRate'].includes(name)) return;
-    frame?.contentWindow?.postMessage(JSON.stringify({event:'command',func:name,args}), 'https://www.youtube.com');
+    postToVideo({event:'command',func:name,args});
   }
   const sync = RiffSync.create({command,status,scoreCommand(type,value) {
-    if (!calibrationReady || calibration) return;
+    if (!enabled || !calibrationReady || calibration) return;
     document.dispatchEvent(new CustomEvent('riff-reel-player-follow', {detail:JSON.stringify({type,value,path:location.pathname})}));
   }});
-  function requestPlayer() { document.dispatchEvent(new CustomEvent('riff-reel-player-request')); }
+  function requestPlayer() { if (enabled) document.dispatchEvent(new CustomEvent('riff-reel-player-request')); }
   document.addEventListener('riff-reel-player', event => {
-    if (!currentKey || typeof event.detail !== 'string' || event.detail.length > 1000) return;
+    if (!enabled || !currentKey || typeof event.detail !== 'string' || event.detail.length > 1000) return;
     let data; try { data = JSON.parse(event.detail); } catch { return; }
     if (!data || data.path !== location.pathname) return;
     const wasAvailable = sync.state.available;
@@ -149,6 +206,7 @@
       : 'Time sync unavailable: Play/Pause still work.';
     if (sync.state.following) {
       wantedPlaying = sync.state.playing;
+      updatePlaybackButton();
       if (wantedPlaying && frame) replaceAudio($('replace-audio').checked && !sync.state.counting);
     }
     if (data.type === 'ready' && !wasAvailable) {
@@ -161,6 +219,7 @@
     if (data.type === 'start') document.dispatchEvent(new CustomEvent('riff-reel-player-position-request'));
   });
   function replaceAudio(active) {
+    active = enabled && active;
     replacementActive = active;
     document.dispatchEvent(new CustomEvent('riff-reel-site-audio', {detail:active}));
     document.dispatchEvent(new CustomEvent('riff-reel-metronome-request', {detail:JSON.stringify({active,keep:!calibration && $('keep-metronome').checked === true})}));
@@ -170,8 +229,15 @@
     let data; try { data = JSON.parse(event.detail); } catch { return; }
     if (data && typeof data.message === 'string') $('metronome-status').textContent = data.message;
   });
+  function updatePlaybackButton() {
+    const playing = Boolean(frame) && wantedPlaying;
+    $('play').textContent = playing ? 'Ⅱ Pause' : '▶ Play';
+    $('play').setAttribute('aria-label', playing ? 'Pause' : 'Play');
+  }
   function play() {
+    if (!enabled) return;
     wantedPlaying = true;
+    updatePlaybackButton();
     if (sync.state.following && sync.state.counting) { command('pauseVideo'); status('Count-in: waiting for the countdown…'); return; }
     if (frame) {
       replaceAudio($('replace-audio').checked);
@@ -180,12 +246,12 @@
       status(ready ? 'Play command sent to YouTube.' : 'Play received. Waiting for YouTube…');
     } else status('Choose a video to start playback.');
   }
-  function pause() { wantedPlaying = false; command('pauseVideo'); }
+  function pause() { wantedPlaying = false; updatePlaybackButton(); command('pauseVideo'); }
   function load(id) {
     if (calibration) leaveCalibration(false);
     importDraft = null; importReading = false; importRequest++; $('points-preview').hidden = true;
     const token = ++videoGeneration, key = currentKey;
-    ready = false; chosen = id; calibrationReady = false; calibrationRevision++;
+    ready = false; frameLoaded = false; videoOriginVerified = false; chosen = id; calibrationReady = false; calibrationRevision++;
     sync.setOffset(0, false); sync.setPoints([], false); videoSample = null; reportedVideoSample = null; videoState = null;
     $('points-controls').disabled = true; renderPoints();
     $('points-status').textContent = 'Loading sync points…';
@@ -196,9 +262,12 @@
     frame.src = `https://www.youtube.com/embed/${id}?enablejsapi=1&playsinline=1&origin=${encodeURIComponent(location.origin)}`;
     const loadedFrame = frame;
     frame.addEventListener('load', () => {
-      if (frame === loadedFrame) loadedFrame.contentWindow?.postMessage(JSON.stringify({event:'listening',id:'riff-reel'}), 'https://www.youtube.com');
+      if (frame !== loadedFrame) return;
+      frameLoaded = true;
+      postToVideo({event:'listening',id:'riff-reel'});
     });
     $('video').replaceChildren(frame);
+    updatePlaybackButton();
     restoreCalibration(key, id, token);
   }
   async function restoreCalibration(key, id, token) {
@@ -249,7 +318,7 @@
     $('point-editor').hidden = !calibration;
     $('point-sync').disabled = Boolean(calibration) || pointWrite?.token === videoGeneration;
     $('sync-player').disabled = Boolean(calibration);
-    $('play').disabled = Boolean(calibration); $('pause').disabled = Boolean(calibration);
+    $('play').disabled = Boolean(calibration);
     $('replace-audio').disabled = Boolean(calibration); $('keep-metronome').disabled = Boolean(calibration);
     $('point-use-current').hidden = !calibration?.awaitingSeek;
     $('point-use-current').disabled = !reportedVideoSample || videoState === 3 || Boolean(calibration?.saving);
@@ -320,9 +389,15 @@
     if (data.type === 'seek' && data.ok && calibration.pendingEdit !== null) selectCalibrationPosition(calibration.pendingEdit);
     if (data.type === 'seek' && !data.ok) { $('points-status').textContent = 'Could not select this saved tab position. Click the desired position on the tab.'; calibration.target = null; updateCalibrationUI(); }
   });
+  let renderedPoints = '';
   function renderPoints() {
+    const points = sync.getPoints();
+    const busy = Boolean(calibration) || pointWrite?.token === videoGeneration;
+    const signature = JSON.stringify([points,busy]);
+    if (signature === renderedPoints) return;
+    renderedPoints = signature;
     $('point-list').replaceChildren();
-    for (const point of sync.getPoints()) {
+    for (const point of points) {
       const row = document.createElement('div'); row.className = 'row'; row.style.flexWrap = 'wrap';
       const label = document.createElement('span'); label.textContent = `${point.score.toFixed(3)} s → ${point.video.toFixed(3)} s`;
       const edit = document.createElement('button'); edit.textContent = 'Edit'; edit.disabled = Boolean(calibration) || pointWrite?.token === videoGeneration; edit.setAttribute('aria-label', `Edit sync point at ${point.score} seconds`);
@@ -447,7 +522,7 @@
     if (Date.now() - reportedVideoSample.at > 3000) {
       $('points-status').textContent = 'Refresh the YouTube position by playing or pausing the video, then try again.';
       command('pauseVideo');
-      frame?.contentWindow?.postMessage(JSON.stringify({event:'listening',id:'riff-reel'}), 'https://www.youtube.com');
+      postToVideo({event:'listening',id:'riff-reel'});
       return;
     }
     videoSample = {...reportedVideoSample}; calibration.awaitingSeek = false; updateCalibrationUI();
@@ -475,12 +550,14 @@
     leaveCalibration(); $('points-status').textContent = 'Sync mode cancelled. No point was saved.';
   };
   window.addEventListener('message', event => {
-    if (event.origin !== 'https://www.youtube.com' || event.source !== frame?.contentWindow) return;
+    if (!enabled || event.origin !== 'https://www.youtube.com' || event.source !== frame?.contentWindow) return;
     let data; try { data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data; } catch { return; }
+    if (!data || typeof data !== 'object') return;
+    videoOriginVerified = true;
     if ((data?.event === 'onReady' || data?.event === 'initialDelivery') && !ready) {
-      ready = true;
+      ready = true; frameLoaded = true;
       for (const name of ['onError', 'onAutoplayBlocked', 'onStateChange']) {
-        frame.contentWindow.postMessage(JSON.stringify({event:'command',func:'addEventListener',args:[name]}), 'https://www.youtube.com');
+        postToVideo({event:'command',func:'addEventListener',args:[name]});
       }
       if (calibration) { if (calibration.target !== null) selectCalibrationPosition(calibration.target); }
       else if (sync.state.following) sync.resume();
@@ -492,7 +569,11 @@
       sync.videoRate(data.info?.playbackRate);
       if (data.info?.availablePlaybackRates) sync.availableRates(data.info.availablePlaybackRates);
       if (Number.isFinite(data.info?.playbackRate) && data.info.playbackRate > 0) videoRate = data.info.playbackRate;
-      if (Number.isInteger(data.info?.playerState)) videoState = data.info.playerState;
+      if (Number.isInteger(data.info?.playerState)) {
+        videoState = data.info.playerState;
+        if (!sync.state.counting && [0,1,2,5].includes(videoState)) wantedPlaying = videoState === 1;
+        updatePlaybackButton();
+      }
       if (Number.isFinite(data.info?.currentTime) && data.info.currentTime >= 0 && videoState !== 3 && !calibration?.saving) {
         const value = data.info.currentTime;
         reportedVideoSample = {seconds:value,at:Date.now()};
@@ -509,19 +590,22 @@
       sync.videoState?.(data.info);
       const previousState = videoState;
       videoState = data.info;
+      if ([0,2,5].includes(videoState) && !sync.state.counting) wantedPlaying = false;
+      updatePlaybackButton();
       if (calibration) {
         if (videoState === 3 || (videoState === 2 && previousState !== 2)) videoSample = null;
         if (videoState === 1 && !calibration.saving) calibration.awaitingSeek = false;
-        if (videoState === 2) frame.contentWindow?.postMessage(JSON.stringify({event:'listening',id:'riff-reel'}), 'https://www.youtube.com');
+        if (videoState === 2) postToVideo({event:'listening',id:'riff-reel'});
         updateCalibrationUI();
       }
     }
     if (data?.event === 'onStateChange' && data.info === 1) {
-      if (calibration) { wantedPlaying = true; replaceAudio(true); return; }
+      if (calibration) { wantedPlaying = true; updatePlaybackButton(); replaceAudio(true); return; }
       if (sync.state.following && sync.state.counting) { command('pauseVideo'); return; }
       wantedPlaying = true;
       replaceAudio($('replace-audio').checked);
-      status('Video playing.');
+      updatePlaybackButton();
+      status('');
     }
     if (data?.event === 'onError') status('This video cannot be embedded. Choose another version.');
     if (data?.event === 'onAutoplayBlocked') status('Click Play inside the video to allow playback.');
@@ -551,13 +635,20 @@
     finally { if (token === generation) $('search').disabled = false; }
   }
   async function refresh() {
+    if (!enabledReady) return;
     const next = identify();
+    if (!enabled) {
+      if (next) {
+        if (!rootHost.isConnected) document.documentElement.append(rootHost);
+      } else rootHost.remove();
+      return;
+    }
     const key = next ? RiffCore.songKey(next.artist, next.title) : '';
     if (key === currentKey) return;
     if (calibration) leaveCalibration(false);
     currentKey = key; const token = ++generation;
     videoGeneration++; calibrationReady = false; $('points-controls').disabled = true; videoSample = null;
-    pause(); sync.reset(); replaceAudio(false); frame = null; chosen = null; ready = false; results = []; $('video').replaceChildren();
+    pause(); sync.reset(); replaceAudio(false); frame = null; chosen = null; ready = false; frameLoaded = false; videoOriginVerified = false; results = []; $('video').replaceChildren();
     if (!next) { rootHost.remove(); return; }
     song = next; document.documentElement.append(rootHost); host = rootHost;
     $('song').textContent = `${song.artist} — ${song.title}`;
@@ -576,7 +667,7 @@
   $('replace-audio').onchange = () => replaceAudio($('replace-audio').checked && Boolean(frame));
   window.addEventListener('pagehide', () => { if (calibration) leaveCalibration(false); replaceAudio(false); });
   $('sync-player').onchange = () => { sync.setEnabled($('sync-player').checked); requestPlayer(); };
-  $('play').onclick = play; $('pause').onclick = pause;
+  $('play').onclick = () => { if (wantedPlaying && frame) pause(); else play(); };
   $('search').onclick = () => search();
   $('versions').onchange = () => select($('versions').value);
   $('save').onclick = () => { const id = RiffCore.videoId($('url').value); if (id) select(id); else status('Enter a valid YouTube URL.'); };
@@ -608,6 +699,7 @@
     return null;
   }
   function captureTransport(event) {
+    if (!enabled) return;
     if (event.type === 'keydown' && !['Enter', ' '].includes(event.key)) return;
     requestPlayer();
     const button = clickedButton(event);
@@ -618,7 +710,7 @@
   document.addEventListener('keydown', captureTransport, true);
   // Delegation survives client-side navigation and replaced controls.
   document.addEventListener('click', event => {
-    if (calibration) return;
+    if (!enabled || calibration) return;
     const button = clickedButton(event);
     if (!button || button.disabled || button.getAttribute('aria-disabled') === 'true') return;
     const pending = pendingTransport.get(button);
@@ -635,7 +727,58 @@
     refresh();
     requestPlayer();
     if (currentKey && !calibration && !sync.state.available) $('sync-status').textContent = 'Time sync unavailable: Play/Pause still work.';
-    if (frame && (!ready || calibration?.awaitingSeek)) frame.contentWindow?.postMessage(JSON.stringify({event:'listening',id:'riff-reel'}), 'https://www.youtube.com');
+    if (frame && (!ready || calibration?.awaitingSeek)) postToVideo({event:'listening',id:'riff-reel'});
   }, 1000);
-  refresh();
+  function setEnabled(value) {
+    if (enabledReady && enabled === value) return;
+    // Invalidate asynchronous searches and calibration reads before releasing UG.
+    if (!value) {
+      command('pauseVideo');
+      enabled = false;
+      generation++; videoGeneration++; importRequest++;
+      currentKey = ''; wantedPlaying = false; ready = false; frameLoaded = false; videoOriginVerified = false;
+      calibration = null; editingTimes.clear();
+      importDraft = null; importReading = false;
+      sync.reset(); sync.setEnabled(false);
+      replaceAudio(false);
+      frame = null; chosen = null; calibrationReady = false;
+      $('video').replaceChildren();
+      updateCalibrationUI();
+    } else {
+      enabled = true;
+      sync.setEnabled($('sync-player').checked);
+    }
+    enabledReady = true;
+    $('panel').dataset.enabled = String(enabled);
+    $('toggle-enabled').disabled = false;
+    $('toggle-enabled').setAttribute('aria-checked', String(enabled));
+    $('toggle-enabled').title = enabled ? 'Disable Jamingo' : 'Enable Jamingo';
+    $('reopen').title = enabled ? 'Open Jamingo' : 'Enable Jamingo';
+    $('reopen').setAttribute('aria-label', enabled ? 'Open Jamingo' : 'Enable Jamingo');
+    setPanelMode(panelMode, false);
+    document.dispatchEvent(new CustomEvent('riff-reel-enabled', {detail:enabled}));
+    refresh();
+  }
+  $('toggle-enabled').onclick = () => {
+    if (!enabledReady) return;
+    const value = !enabled;
+    enabledRevision++;
+    $('enabled-status').textContent = '';
+    setEnabled(value);
+    enabledWrites = enabledWrites.catch(() => {}).then(() => chrome.storage.local.set({'riff-reel:enabled':value})).catch(() => {
+      $('enabled-status').textContent = 'Could not save this setting. It may reset when you reload.';
+    });
+  };
+  chrome.storage.onChanged?.addListener((changes, area) => {
+    if (area !== 'local' || !changes['riff-reel:enabled']) return;
+    enabledRevision++;
+    $('enabled-status').textContent = '';
+    setEnabled(changes['riff-reel:enabled'].newValue === true);
+  });
+  const initialEnabledRevision = enabledRevision;
+  chrome.storage.local.get('riff-reel:enabled').then(stored => {
+    if (enabledRevision === initialEnabledRevision) setEnabled(stored['riff-reel:enabled'] === true);
+  }).catch(() => {
+    if (enabledRevision === initialEnabledRevision) setEnabled(false);
+  });
 })();

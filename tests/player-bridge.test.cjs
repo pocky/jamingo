@@ -2,9 +2,30 @@ const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const {parseHTML}=require('linkedom');
 const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
+test('disabled bridge leaves UG methods working and rejects extension playback commands until enabled again',()=>{
+ const f=setup();f.request();
+ const toggle=value=>f.document.dispatchEvent(new f.window.CustomEvent('riff-reel-enabled',{detail:value}));
+ toggle(false);
+ const count=f.events.length;
+ assert.equal(f.api.play(true),'played');assert.equal(f.events.length,count);
+ const calls=f.calls.length;
+ for(const name of ['riff-reel-player-follow','riff-reel-player-calibration'])
+  f.document.dispatchEvent(new f.window.CustomEvent(name,{detail:JSON.stringify({type:'pause',path:'/tab/black-sabbath/snowblind-official-2074495'})}));
+ f.document.dispatchEvent(new f.window.CustomEvent('riff-reel-player-position-request'));
+ f.request();assert.equal(f.calls.length,calls);assert.equal(f.events.length,count);
+ toggle(true);f.api.play(false);assert.equal(f.events.at(-1).type,'start');
+});
+test('disabling stops discovery timers and re-enabling creates only one timer',()=>{
+ const f=setup();
+ assert.equal(f.timers.size,1);
+ const toggle=value=>f.document.dispatchEvent(new f.window.CustomEvent('riff-reel-enabled',{detail:value}));
+ toggle(false);assert.equal(f.timers.size,0);
+ toggle(true);toggle(true);assert.equal(f.timers.size,1);
+ toggle(false);assert.equal(f.timers.size,0);
+});
 function setup(){
  const {document,window}=parseHTML('<html><body><div id="pro-player-scroll-container"></div></body></html>');
- const events=[],calls=[];
+ const events=[],calls=[],timers=new Map();let timerId=0;
  const wasm={};
  for(const name of ['onCountdownTick','onPlaybackPositionChanged','onPlaybackSecondResponse','onPlayHeadPositionSet','onPlaybackStatusChanged','onScoreLoadingStarted']){
   wasm[name]=function(...args){calls.push({name,args,self:this});return 42;};
@@ -18,9 +39,9 @@ function setup(){
  webpackRequire.m={'random-module-id':factory};
  const chunks=[];chunks.push=function(chunk){chunk[2](webpackRequire);};
  document.addEventListener('riff-reel-player',event=>events.push(JSON.parse(event.detail)));
- vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../player-bridge.js'),'utf8'),{document,RiffMetronome:require('../native-metronome.js'),CustomEvent:window.CustomEvent,location:{pathname:'/tab/black-sabbath/snowblind-official-2074495'},webpackChunkug_react_i18n_es6:chunks});
+ vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../player-bridge.js'),'utf8'),{setInterval(fn){const id=++timerId;timers.set(id,fn);return id;},clearInterval(id){timers.delete(id);},document,RiffMetronome:require('../native-metronome.js'),CustomEvent:window.CustomEvent,location:{pathname:'/tab/black-sabbath/snowblind-official-2074495'},webpackChunkug_react_i18n_es6:chunks});
  const request=()=>document.dispatchEvent(new window.CustomEvent('riff-reel-player-request'));
- return {document,window,events,calls,api,wasm,service,request};
+ return {document,window,events,calls,api,wasm,service,request,timers};
 }
 test('locate the existing XTZ service without hardcoded module ID or export name',()=>{
  const f=setup();f.request();assert.equal(f.events.at(-1).type,'ready');
