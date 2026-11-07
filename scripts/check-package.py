@@ -41,7 +41,7 @@ def check(tag=None, archive=None, checksum=None):
 
     if archive is not None:
         expected = {"manifest.json", "README.md", "LICENSE", "docs/publishing.md", *references}
-        for directory in ["icons"]:
+        for directory in ["icons", "docs/images"]:
             expected.update(path.relative_to(ROOT).as_posix() for path in (ROOT / directory).rglob("*") if path.is_file())
         with zipfile.ZipFile(archive) as bundle:
             files = [item.filename for item in bundle.infolist() if not item.is_dir()]

@@ -1,6 +1,6 @@
 # Jamingo
 
-A Manifest V3 extension for **Chrome and Brave** (Chromium 111 or newer). Play a YouTube video alongside an Ultimate Guitar tab, remember your preferred versions and calibrate timing for each song and video. The interface is in English.
+A Manifest V3 extension for **Chrome and Brave** (Chromium 111 or newer). Play a YouTube video alongside an Ultimate Guitar tab, remember your preferred versions and calibrate timing for each song and video.
 
 Jamingo is an independent project, not affiliated with or endorsed by Ultimate Guitar. It does not provide an Ultimate Guitar subscription or unlock restricted content. Permission for its integration with Ultimate Guitar's internal player has not been obtained.
 
@@ -12,7 +12,29 @@ Jamingo is an independent project, not affiliated with or endorsed by Ultimate G
 4. Click **Load unpacked** and select the extracted folder containing `manifest.json`.
 5. Open or reload a tab at `https://tabs.ultimate-guitar.com/tab/…`, then enable Jamingo using its power switch.
 
+**Enable Developer mode** using the switch at the top right of the extensions page:
+
+![Chromium extensions page with the Developer mode switch at the top right](docs/images/install-developer-mode.png)
+
+**Click Load unpacked**, then select the extracted folder containing `manifest.json`:
+
+![Chromium extensions page with Developer mode enabled and the Load unpacked button visible](docs/images/install-load-unpacked.png)
+
+These installation screenshots show Chromium in English. Chrome and Brave use the same installation flow; labels may differ with your browser language.
+
 For updates, replace the files in the **same folder**, reload the extension on the extensions page, then fully reload the Ultimate Guitar page. Keep the extension installed to retain its local settings. The audio bridge must start before the site's scripts. No npm installation or compilation is required to use the extension. Manual installations do not update automatically; download each new release yourself.
+
+## Screenshots
+
+The actual Jamingo interface in **Open**, **Video** and **Close** modes. These captures use demonstration data; the video area is a placeholder rather than a live YouTube video.
+
+| Open: all controls | Video: playback only | Close: mini-player |
+| --- | --- | --- |
+| <img src="docs/images/panel-open.png" alt="Jamingo Open mode with the video, playback button and settings" width="280"> | <img src="docs/images/panel-video.png" alt="Jamingo Video mode showing the video and playback button" width="240"> | <img src="docs/images/panel-close.png" alt="Jamingo Close mode keeping the 200 by 200 pixel video visible" width="180"> |
+
+When disabled, Jamingo leaves only its small launcher. Click its name or power switch to enable it:
+
+<img src="docs/images/panel-disabled.png" alt="Disabled Jamingo launcher with its gray name and power switch" width="210">
 
 ## Build and download
 
@@ -59,7 +81,7 @@ Recognized Play/Pause/Stop controls on Ultimate Guitar control the video. **Repl
 
 The panel's single **Play/Pause** button controls YouTube and follows its playback state. Collapsing the panel does not stop playback. Unchecking **Align tab to YouTube audio** retains simple Play/Pause linking. Sync mode temporarily suspends automatic following so you can calibrate both players independently.
 
-The adapter identifies the existing XTZ service by its factory signature in the site's Webpack runtime, without hardcoded module numbers. It preserves original player calls. This is an internal interface and may change. The implementation was based on the public [October 2026 player module](https://tabs.ultimate-guitar.com/static/public/build/ug_react_i18n_es6/202610/8811.183687d6cad60a528268428ad961cf8a.js), located through a saved page supplied by the user. If the adapter cannot connect, the panel reports it and simple Play/Pause remains available.
+The adapter identifies the existing XTZ service by its factory signature in the site's Webpack runtime, without hardcoded module numbers. It preserves original player calls. This is an internal interface and may change. The implementation was based on the public [October 2026 player module](https://tabs.ultimate-guitar.com/static/public/build/ug_react_i18n_es6/202610/8811.183687d6cad60a528268428ad961cf8a.js). If the adapter cannot connect, the panel reports it and simple Play/Pause remains available.
 
 ## Keep the UG metronome over YouTube
 
@@ -128,7 +150,6 @@ The video ID above is illustrative; exported files contain your selected recordi
 - Some videos cannot be embedded or are unavailable in your region. Choose another version. Browser autoplay rules may require one direct click inside the video.
 - Audio replacement covers the main Ultimate Guitar page. A separate site iframe is not covered.
 - Labelled controls are recognized by their accessible labels, titles, text or test attributes. The unlabelled Official Play button is recognized by its SVG glyph inside `#pro-player-scroll-container`, independently of generated React IDs and classes. React Aria gesture intent is captured before the icon can change. Other unlabelled controls may require adaptation.
-- Automated tests use simulated engine events and DOM/YouTube boundaries. They do not prove live streaming behavior. Previous versions have been tried successfully by the user; the new point calibration needs evaluation on actual recordings.
 
 ## Data and permissions
 

@@ -4,7 +4,7 @@
 PYTHON ?= python3
 ARCHIVE := dist/jamingo.zip
 EXTENSION_FILES := manifest.json core.js \
-	background.js content.js site-audio.js native-metronome.js sync.js player-bridge.js README.md LICENSE icons docs/publishing.md
+	background.js content.js site-audio.js native-metronome.js sync.js player-bridge.js README.md LICENSE icons docs/publishing.md docs/images
 
 .PHONY: zip FORCE
 
